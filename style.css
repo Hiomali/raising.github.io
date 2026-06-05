@@ -119,7 +119,7 @@ body {
     }
 }
 
-/* ----- ОСТАЛЬНЫЕ СТИЛИ (как были) ----- */
+/* ----- ОСНОВНОЙ КОНТЕЙНЕР ----- */
 .racing-container {
     max-width: 1400px;
     width: 100%;
@@ -132,6 +132,7 @@ body {
     overflow: hidden;
 }
 
+/* ----- ХЕДЕР ----- */
 .event-header {
     background: linear-gradient(135deg, #0b1122 0%, #03070f 100%);
     padding: 1.8rem 2rem;
@@ -212,6 +213,8 @@ body {
     border-radius: 40px;
     border: 1px solid rgba(255, 100, 0, 0.5);
 }
+
+/* ----- РЕГИСТРАЦИЯ ----- */
 .register-section {
     margin: 1.5rem 2rem;
     background: rgba(8, 14, 26, 0.7);
@@ -256,6 +259,8 @@ body {
     margin-top: 0.8rem;
     font-size: 0.8rem;
 }
+
+/* ----- ПАНЕЛЬ УПРАВЛЕНИЯ ТАБЛИЦЕЙ ----- */
 .table-controls {
     padding: 1.2rem 2rem 0.8rem 2rem;
     display: flex;
@@ -307,6 +312,8 @@ body {
     padding: 0.3rem 1rem;
     border-radius: 30px;
 }
+
+/* ----- ОСНОВНАЯ ТАБЛИЦА ----- */
 .table-wrapper {
     overflow-x: auto;
     padding: 0 1.5rem 1.5rem 1.5rem;
@@ -393,6 +400,8 @@ body {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+/* ----- БЛОК ЗАЛЁТОВ ----- */
 .heats-container {
     margin: 1.5rem 2rem;
     background: rgba(8, 14, 26, 0.6);
@@ -415,6 +424,8 @@ body {
 .heat-card h4 { margin-bottom: 8px; color: #ffbc7a; }
 .heat-pilot-list { list-style: none; padding-left: 0; }
 .heat-pilot-list li { font-size: 0.85rem; padding: 4px 0; border-bottom: 1px dashed #2a3a55; }
+
+/* ----- МОДАЛЬНОЕ ОКНО ----- */
 .modal {
     display: none;
     position: fixed;
@@ -448,6 +459,8 @@ body {
 }
 .modal-content button { background: #ff7b2c; border: none; padding: 0.6rem 1.5rem; border-radius: 40px; font-weight: bold; cursor: pointer; }
 .close-modal { float: right; font-size: 1.8rem; font-weight: bold; cursor: pointer; color: #ffaa77; }
+
+/* ----- АДМИН-ПАНЕЛЬ ----- */
 .admin-panel {
     display: none;
     margin: 1.5rem 2rem;
@@ -537,6 +550,8 @@ body {
     color: white;
     width: 200px;
 }
+
+/* ----- АДАПТИВНОСТЬ ----- */
 @media (max-width: 780px) {
     body { padding: 1rem; }
     .title-section h1 { font-size: 1.6rem; }
@@ -551,4 +566,32 @@ body {
     .register-form { flex-direction: column; align-items: stretch; }
     .splash-title { font-size: 1.5rem; }
     .splash-logo { font-size: 2rem; }
+}
+.register-closed-msg {
+    margin: 1.5rem 2rem;
+    background: rgba(200, 50, 50, 0.3);
+    border-radius: 1.5rem;
+    padding: 1.2rem;
+    text-align: center;
+    border: 1px solid #ff8866;
+    color: #ffbb99;
+    font-size: 1.1rem;
+}
+.register-closed-msg i {
+    margin-right: 10px;
+}
+.reg-timer {
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 40px;
+    padding: 0.5rem 1rem;
+    margin-bottom: 1rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: #ffbc7a;
+    border: 1px solid #ff884d;
+    display: inline-block;
+    width: auto;
+}
+.reg-timer i {
+    margin-right: 8px;
 }

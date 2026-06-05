@@ -13,15 +13,11 @@
 <!-- ПРИВЕТСТВЕННАЯ ЗАСТАВКА (показывается один раз) -->
 <div id="splashScreen" class="splash-screen">
     <div class="splash-content">
-        <div class="splash-logo">
-            <i class="fas fa-dragon"></i> PHOENIX RACING
-        </div>
+        <div class="splash-logo"><i class="fas fa-dragon"></i> PHOENIX RACING</div>
         <div class="splash-title">NINGBOWORLODRONE</div>
         <div class="splash-sub">WORLD DRONE RACING CUP • OFFICIAL TIMING</div>
         <div class="splash-date">28–31 MAR 2026</div>
-        <div class="splash-message">
-            <i class="fas fa-flag-checkered"></i> Добро пожаловать в мир скоростных дронов!
-        </div>
+        <div class="splash-message"><i class="fas fa-flag-checkered"></i> Добро пожаловать в мир скоростных дронов!</div>
         <button id="closeSplashBtn" class="splash-btn">Войти в мир гонок <i class="fas fa-arrow-right"></i></button>
     </div>
 </div>
@@ -33,7 +29,7 @@
                 <h1>NINGBOWORLODRONE</h1>
                 <div class="sub">WORLD DRONE RACING CUP • OFFICIAL TIMING</div>
             </div>
-            <div class="date-badge"><i class="fas fa-calendar-alt"></i> 28–31 MAR 2026</div>
+            <div class="date-badge"><i class="fas fa-calendar-alt"></i> 2026</div>
         </div>
         <div class="phoenix-tag">
             <div class="phoenix-logo"><i class="fas fa-dragon"></i> PHOENIX RACING</div>
@@ -41,8 +37,8 @@
         </div>
     </div>
 
-    <!-- Блок регистрации команды (без очков и круга) -->
-    <div class="register-section">
+    <!-- Блок регистрации (скрывается, если регистрация закрыта) -->
+    <div class="register-section" id="registerSection">
         <h3><i class="fas fa-user-plus"></i> Регистрация новой команды / пилота</h3>
         <div class="register-form">
             <div class="form-field">
@@ -61,7 +57,13 @@
                 <button id="registerBtn" class="action-btn success"><i class="fas fa-check-circle"></i> Зарегистрировать</button>
             </div>
         </div>
+        <div id="regTimer" class="reg-timer" style="font-size: 0.9rem; margin-top: 10px; color: #ffaa77;"></div>
         <div id="regMessage" class="form-message"></div>
+    </div>
+
+    <!-- Сообщение, если регистрация закрыта -->
+    <div id="registrationClosedMsg" class="register-closed-msg" style="display: none;">
+        <i class="fas fa-lock"></i> Регистрация временно закрыта. Следующее открытие: <span id="nextOpenTime">—</span>
     </div>
 
     <div class="table-controls">
@@ -76,7 +78,6 @@
         </div>
     </div>
 
-    <!-- Основная таблица результатов -->
     <div class="table-wrapper">
         <table class="racing-table" id="racingTable">
             <thead>
@@ -87,14 +88,12 @@
                     <th data-sort="bestLap">ЛУЧШИЙ КРУГ (сек) <i class="fas fa-sort sort-icon"></i></th>
                     <th data-sort="points">ОЧКИ <i class="fas fa-sort sort-icon"></i></th>
                     <th>СТАТУС</th>
-                 </tr>
+                </tr>
             </thead>
-            <tbody id="tableBody"><tr><td colspan="6">Загрузка...</td></tr>
-            </tbody>
+            <tbody id="tableBody"><tr><td colspan="6">Загрузка...</td></tbody>
         </table>
     </div>
 
-    <!-- Блок залётов (публичный) -->
     <div class="heats-container" id="heatsContainer">
         <h3><i class="fas fa-flag-checkered"></i> Залёты (кто с кем)</h3>
         <div id="heatsList" class="heats-grid">Загрузка залётов...</div>
@@ -126,6 +125,7 @@
         <button class="tab-btn active" data-tab="pilotsTab"><i class="fas fa-users"></i> Пилоты</button>
         <button class="tab-btn" data-tab="heatsTab"><i class="fas fa-layer-group"></i> Залёты</button>
         <button class="tab-btn" data-tab="disqualTab"><i class="fas fa-ban"></i> Дисквалификации</button>
+        <button class="tab-btn" data-tab="regControlTab"><i class="fas fa-door-open"></i> Регистрация</button>
         <button class="tab-btn" data-tab="passwordTab"><i class="fas fa-key"></i> Сменить пароль</button>
     </div>
 
@@ -167,7 +167,40 @@
         </div>
     </div>
 
-    <!-- Вкладка: смена пароля -->
+    <!-- Вкладка: управление регистрацией -->
+    <div id="regControlTab" class="tab-content">
+        <div class="admin-form">
+            <h4><i class="fas fa-door-closed"></i> Настройки регистрации команд</h4>
+            <div class="form-row">
+                <div class="form-field" style="flex-direction: row; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="regEnabledCheckbox" style="width: 20px; height: 20px;">
+                    <label style="text-transform: none;">Разрешить регистрацию (вручную)</label>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-field">
+                    <label>Использовать таймер</label>
+                    <input type="checkbox" id="useTimerCheckbox" style="width: 20px; height: 20px;">
+                </div>
+            </div>
+            <div class="form-row" id="timerFields" style="display: none;">
+                <div class="form-field">
+                    <label>Открытие регистрации</label>
+                    <input type="datetime-local" id="regOpenTime">
+                </div>
+                <div class="form-field">
+                    <label>Закрытие регистрации</label>
+                    <input type="datetime-local" id="regCloseTime">
+                </div>
+            </div>
+            <div class="form-row">
+                <button id="saveRegSettingsBtn" class="action-btn success"><i class="fas fa-save"></i> Сохранить настройки</button>
+            </div>
+            <div id="regSettingsMessage" class="form-message"></div>
+        </div>
+    </div>
+
+    <!-- Вкладка: смена пароля и тест заставки -->
     <div id="passwordTab" class="tab-content">
         <div class="admin-form">
             <h4><i class="fas fa-key"></i> Изменить пароль администратора</h4>
@@ -177,6 +210,9 @@
                 <div class="form-field"><button id="changePasswordBtn" class="action-btn success"><i class="fas fa-save"></i> Сохранить пароль</button></div>
             </div>
             <div id="passwordMessage" class="form-message"></div>
+            <hr style="margin: 1rem 0; border-color: #ff884d55;">
+            <button id="testSplashBtn" class="action-btn" style="background: #aa6e2e;"><i class="fas fa-eye"></i> Показать заставку (тест)</button>
+            <div style="font-size:0.7rem; color:#aaa; margin-top: 8px;">Нажмите, чтобы снова увидеть приветственный экран (сбрасывает флаг посещения)</div>
         </div>
     </div>
 </div>

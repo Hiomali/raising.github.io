@@ -8,6 +8,11 @@ let editingPilotId = null;
 let heatsMap = {};
 let adminPassword = "admin123";
 
+// Настройки регистрации
+let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
+let regCheckInterval = null;
+let regTimerInterval = null;  // для обратного отсчёта
+
 // DOM элементы
 const tbody = document.getElementById("tableBody");
 const searchInput = document.getElementById("searchInput");
@@ -41,42 +46,157 @@ const disqualListDiv = document.getElementById("disqualList");
 const tabBtns = document.querySelectorAll(".tab-btn");
 const tabContents = document.querySelectorAll(".tab-content");
 
-// регистрация команды
+// Регистрация
 const registerBtn = document.getElementById("registerBtn");
 const regName = document.getElementById("regName");
 const regCountryCode = document.getElementById("regCountryCode");
 const regCountryName = document.getElementById("regCountryName");
 const regMessage = document.getElementById("regMessage");
+const regTimerDiv = document.getElementById("regTimer");
 
-// splash screen элементы
+// Splash screen
 const splashScreen = document.getElementById("splashScreen");
 const closeSplashBtn = document.getElementById("closeSplashBtn");
+const testSplashBtn = document.getElementById("testSplashBtn");
 
-// ========== ФУНКЦИЯ ДЛЯ ПЕРВОГО ПОСЕЩЕНИЯ ==========
+// Элементы управления регистрацией в админке
+const regEnabledCheckbox = document.getElementById("regEnabledCheckbox");
+const useTimerCheckbox = document.getElementById("useTimerCheckbox");
+const regOpenTimeInput = document.getElementById("regOpenTime");
+const regCloseTimeInput = document.getElementById("regCloseTime");
+const saveRegSettingsBtn = document.getElementById("saveRegSettingsBtn");
+const regSettingsMessage = document.getElementById("regSettingsMessage");
+const timerFieldsDiv = document.getElementById("timerFields");
+
+// ========== ФУНКЦИИ УПРАВЛЕНИЯ РЕГИСТРАЦИЕЙ ==========
+function loadRegSettings() {
+    const stored = localStorage.getItem("phoenixRegSettings");
+    if (stored) {
+        regSettings = JSON.parse(stored);
+    } else {
+        regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
+    }
+    if (isAdmin) {
+        if (regEnabledCheckbox) regEnabledCheckbox.checked = regSettings.enabled;
+        if (useTimerCheckbox) useTimerCheckbox.checked = regSettings.useTimer;
+        if (regOpenTimeInput) regOpenTimeInput.value = regSettings.openTime || "";
+        if (regCloseTimeInput) regCloseTimeInput.value = regSettings.closeTime || "";
+        toggleTimerFields(regSettings.useTimer);
+    }
+    updateRegistrationUI();
+    startTimerDisplay();
+}
+function saveRegSettingsToStorage() {
+    localStorage.setItem("phoenixRegSettings", JSON.stringify(regSettings));
+    updateRegistrationUI();
+    startTimerDisplay();
+    if (isAdmin && regSettingsMessage) {
+        regSettingsMessage.innerHTML = "✅ Настройки сохранены";
+        setTimeout(() => { if (regSettingsMessage) regSettingsMessage.innerHTML = ""; }, 2000);
+    }
+}
+function toggleTimerFields(show) {
+    if (timerFieldsDiv) timerFieldsDiv.style.display = show ? "flex" : "none";
+}
+function isRegistrationOpen() {
+    if (!regSettings.enabled) return false;
+    if (!regSettings.useTimer) return true;
+    const now = new Date();
+    let open = regSettings.openTime ? new Date(regSettings.openTime) : null;
+    let close = regSettings.closeTime ? new Date(regSettings.closeTime) : null;
+    if (open && close) return (now >= open && now <= close);
+    if (open && !close) return now >= open;
+    if (!open && close) return now <= close;
+    return true;
+}
+function updateRegistrationUI() {
+    const registerSection = document.getElementById("registerSection");
+    const closedMsgDiv = document.getElementById("registrationClosedMsg");
+    const nextOpenSpan = document.getElementById("nextOpenTime");
+    if (!registerSection) return;
+    const isOpen = isRegistrationOpen();
+    if (isOpen) {
+        registerSection.style.display = "block";
+        if (closedMsgDiv) closedMsgDiv.style.display = "none";
+    } else {
+        registerSection.style.display = "none";
+        if (closedMsgDiv) {
+            closedMsgDiv.style.display = "block";
+            let nextTime = null;
+            const now = new Date();
+            if (regSettings.useTimer) {
+                if (regSettings.openTime && new Date(regSettings.openTime) > now) {
+                    nextTime = new Date(regSettings.openTime);
+                } else if (regSettings.closeTime && new Date(regSettings.closeTime) > now) {
+                    nextTime = new Date(regSettings.closeTime);
+                }
+            }
+            if (nextTime) {
+                nextOpenSpan.innerText = nextTime.toLocaleString();
+            } else {
+                nextOpenSpan.innerText = "регистрация отключена администратором";
+            }
+        }
+    }
+}
+function startRegistrationWatcher() {
+    if (regCheckInterval) clearInterval(regCheckInterval);
+    regCheckInterval = setInterval(() => { updateRegistrationUI(); }, 60000);
+}
+// Таймер обратного отсчёта до конца регистрации (если активна и есть время закрытия)
+function startTimerDisplay() {
+    if (regTimerInterval) clearInterval(regTimerInterval);
+    function updateTimer() {
+        if (!regTimerDiv) return;
+        if (!regSettings.enabled || !regSettings.useTimer || !regSettings.closeTime) {
+            regTimerDiv.innerHTML = "";
+            return;
+        }
+        const now = new Date();
+        const closeDate = new Date(regSettings.closeTime);
+        if (closeDate <= now) {
+            regTimerDiv.innerHTML = "⏰ Регистрация закрыта";
+            return;
+        }
+        const diff = closeDate - now;
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (3600000)) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        regTimerDiv.innerHTML = `🕒 До конца регистрации: ${hours}ч ${minutes}м ${seconds}с`;
+    }
+    updateTimer();
+    regTimerInterval = setInterval(updateTimer, 1000);
+}
+
+// ========== ЗАСТАВКА (гарантированное отображение контента) ==========
 function checkAndShowSplash() {
     const hasVisited = localStorage.getItem("phoenixSplashSeen");
     if (!hasVisited) {
-        // Показываем splash
         splashScreen.classList.remove("hide");
-        // Автоматически скрыть через 3 секунды
-        const timer = setTimeout(() => {
-            hideSplashAndSave();
-        }, 4000);
-        // Кнопка закрытия
-        closeSplashBtn.addEventListener("click", () => {
-            clearTimeout(timer);
-            hideSplashAndSave();
-        });
+        // Убедимся, что основной контент видим (но заставка перекрывает)
+        document.querySelector(".racing-container").style.visibility = "visible";
+        let timer = setTimeout(() => { hideSplashAndSave(); }, 4000);
+        closeSplashBtn.onclick = () => { clearTimeout(timer); hideSplashAndSave(); };
     } else {
         splashScreen.classList.add("hide");
+        // Убедимся, что контент виден
+        document.querySelector(".racing-container").style.visibility = "visible";
     }
 }
 function hideSplashAndSave() {
     splashScreen.classList.add("hide");
     localStorage.setItem("phoenixSplashSeen", "true");
+    // Дополнительно: убеждаемся, что контент показан
+    document.querySelector(".racing-container").style.visibility = "visible";
+}
+function resetAndShowSplash() {
+    localStorage.removeItem("phoenixSplashSeen");
+    splashScreen.classList.remove("hide");
+    let timer = setTimeout(() => { hideSplashAndSave(); }, 4000);
+    closeSplashBtn.onclick = () => { clearTimeout(timer); hideSplashAndSave(); };
 }
 
-// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+// ========== ВСПОМОГАТЕЛЬНЫЕ ==========
 function escapeHtml(str) {
     if (str === null || str === undefined) return "";
     return String(str).replace(/[&<>]/g, function(m) {
@@ -87,37 +207,26 @@ function escapeHtml(str) {
     });
 }
 
-// ========== ПРОВЕРКА ЗАЛЁТОВ (не более 4 пилотов) ==========
+// ========== ЗАЛЁТЫ (4 максимум) ==========
 function getHeatCounts() {
-    const counts = {1:0, 2:0, 3:0, 4:0, 5:0, 6:0};
+    const counts = {1:0,2:0,3:0,4:0,5:0,6:0};
     pilotsData.forEach(pilot => {
         if (pilot.disqualified) return;
         const heat = heatsMap[pilot.id];
-        if (heat >= 1 && heat <= 6) {
-            counts[heat]++;
-        }
+        if (heat >= 1 && heat <= 6) counts[heat]++;
     });
     return counts;
 }
-
 function isHeatAvailable(heatNumber, excludePilotId = null) {
     const counts = getHeatCounts();
     let currentCount = counts[heatNumber] || 0;
-    if (excludePilotId !== null) {
-        const pilotHeat = heatsMap[excludePilotId];
-        if (pilotHeat === heatNumber) {
-            currentCount--;
-        }
-    }
+    if (excludePilotId !== null && heatsMap[excludePilotId] === heatNumber) currentCount--;
     return currentCount < 4;
 }
-
 function getAvailableHeats(excludePilotId = null) {
     const available = [];
     for (let i = 1; i <= 6; i++) {
-        if (isHeatAvailable(i, excludePilotId)) {
-            available.push(i);
-        }
+        if (isHeatAvailable(i, excludePilotId)) available.push(i);
     }
     return available;
 }
@@ -166,34 +275,29 @@ function saveHeatsToLocalStorage() {
     localStorage.setItem("heatsAssignment", JSON.stringify(heatsMap));
 }
 
-// ========== ОСНОВНАЯ ТАБЛИЦА (с учётом null) ==========
+// ========== ОСНОВНАЯ ТАБЛИЦА ==========
 function filterAndSortData() {
     let filtered = [...pilotsData];
     if (currentFilter.trim()) {
         const low = currentFilter.toLowerCase();
-        filtered = filtered.filter(p =>
-            p.name.toLowerCase().includes(low) ||
-            p.countryName.toLowerCase().includes(low)
-        );
+        filtered = filtered.filter(p => p.name.toLowerCase().includes(low) || p.countryName.toLowerCase().includes(low));
     }
-    filtered.sort((a, b) => {
+    filtered.sort((a,b) => {
         let valA, valB;
         switch(sortColumn) {
-            case "pilot":   valA = a.name; valB = b.name; break;
+            case "pilot": valA = a.name; valB = b.name; break;
             case "country": valA = a.countryName; valB = b.countryName; break;
             case "bestLap": valA = a.bestLap; valB = b.bestLap; break;
-            case "points":  valA = a.points; valB = b.points; break;
+            case "points": valA = a.points; valB = b.points; break;
             default: return 0;
         }
         if (sortColumn === "bestLap" || sortColumn === "points") {
             if (valA === null && valB === null) return 0;
             if (valA === null) return 1;
             if (valB === null) return -1;
-            if (sortDirection === "asc") return valA - valB;
-            else return valB - valA;
+            return sortDirection === "asc" ? valA - valB : valB - valA;
         } else {
-            if (sortDirection === "asc") return valA.localeCompare(valB);
-            else return valB.localeCompare(valA);
+            return sortDirection === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
         }
     });
     return filtered;
@@ -335,10 +439,7 @@ function addOrUpdatePilot(){
         editingPilotId = null;
     } else {
         const newId = Date.now();
-        pilotsData.push({
-            id: newId, name, countryCode: cc, countryName: cn,
-            bestLap: lap, points: pts, disqualified: false, disqualificationReason: ""
-        });
+        pilotsData.push({ id: newId, name, countryCode: cc, countryName: cn, bestLap: lap, points: pts, disqualified: false, disqualificationReason: "" });
         heatsMap[newId] = 0;
         formMessage.innerHTML = "✅ Пилот добавлен";
     }
@@ -427,7 +528,7 @@ function restorePilot(id){
     }
 }
 
-// ========== АДМИНКА: ЗАЛЁТЫ (с ограничением 4) ==========
+// ========== АДМИНКА: ЗАЛЁТЫ ==========
 function renderHeatsAssignment(){
     if (!heatsAssignmentDiv) return;
     let html = `<div style="font-weight:bold; margin-bottom:8px;">Выберите номер залёта для каждого пилота (0 – не участвует, максимум 4 пилота на залёт)</div>`;
@@ -527,8 +628,12 @@ function logoutAdmin(){
     adminPanel.style.display = "none";
 }
 
-// ========== РЕГИСТРАЦИЯ КОМАНДЫ (прочерк + случайный доступный залёт) ==========
+// ========== РЕГИСТРАЦИЯ КОМАНДЫ ==========
 function registerNewPilot() {
+    if (!isRegistrationOpen()) {
+        regMessage.innerHTML = "❌ Регистрация в данный момент закрыта";
+        return;
+    }
     const name = regName.value.trim();
     const cc = regCountryCode.value.trim();
     const cn = regCountryName.value.trim();
@@ -551,14 +656,8 @@ function registerNewPilot() {
         assignedHeat = 0;
     }
     const newPilot = {
-        id: newId,
-        name: name,
-        countryCode: cc,
-        countryName: cn,
-        bestLap: null,
-        points: null,
-        disqualified: false,
-        disqualificationReason: ""
+        id: newId, name, countryCode: cc, countryName: cn,
+        bestLap: null, points: null, disqualified: false, disqualificationReason: ""
     };
     pilotsData.push(newPilot);
     heatsMap[newId] = assignedHeat;
@@ -568,21 +667,14 @@ function registerNewPilot() {
     regCountryCode.value = "";
     regCountryName.value = "";
     let message = `✅ Команда "${name}" зарегистрирована!`;
-    if (assignedHeat !== 0) {
-        message += ` Назначен залёт №${assignedHeat}.`;
-    } else {
-        message += ` Не назначен в залёт (все залёты заполнены). Администратор может назначить позже.`;
-    }
+    if (assignedHeat !== 0) message += ` Назначен залёт №${assignedHeat}.`;
+    else message += ` Не назначен в залёт (все залёты заполнены). Администратор может назначить позже.`;
     message += ` Лучший круг и очки будут добавлены позже администратором.`;
     regMessage.innerHTML = message;
     setTimeout(() => { regMessage.innerHTML = ""; }, 5000);
     renderTable();
     renderPublicHeats();
-    if (isAdmin) {
-        renderAdminList();
-        renderDisqualList();
-        renderHeatsAssignment();
-    }
+    if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
 }
 
 // ========== ВКЛАДКИ ==========
@@ -602,12 +694,8 @@ function attachSortListeners(){
         const key = th.getAttribute("data-sort");
         if (key === "pos") return;
         th.addEventListener("click", () => {
-            if (sortColumn === key) {
-                sortDirection = sortDirection === "asc" ? "desc" : "asc";
-            } else {
-                sortColumn = key;
-                sortDirection = (key === "points" || key === "bestLap") ? "desc" : "asc";
-            }
+            if (sortColumn === key) sortDirection = sortDirection === "asc" ? "desc" : "asc";
+            else { sortColumn = key; sortDirection = (key === "points" || key === "bestLap") ? "desc" : "asc"; }
             renderTable();
         });
     });
@@ -616,9 +704,11 @@ function attachSortListeners(){
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 function init(){
     loadDataFromLocalStorage();
+    loadRegSettings();
     renderTable();
     attachSortListeners();
     renderPublicHeats();
+    startRegistrationWatcher();
     searchInput.addEventListener("input", () => { currentFilter = searchInput.value; renderTable(); });
     resetBtn.addEventListener("click", () => { searchInput.value = ""; currentFilter = ""; renderTable(); });
     adminLoginBtn.addEventListener("click", showAdminModal);
@@ -631,13 +721,27 @@ function init(){
     saveHeatsBtn.addEventListener("click", saveHeatsDistribution);
     changePasswordBtn.addEventListener("click", changeAdminPassword);
     registerBtn.addEventListener("click", registerNewPilot);
-    tabBtns.forEach(btn => {
-        btn.addEventListener("click", () => {
-            const tabId = btn.getAttribute("data-tab");
-            switchTab(tabId);
+    if (testSplashBtn) testSplashBtn.addEventListener("click", resetAndShowSplash);
+    if (saveRegSettingsBtn) {
+        saveRegSettingsBtn.addEventListener("click", () => {
+            const enabled = regEnabledCheckbox.checked;
+            const useTimer = useTimerCheckbox.checked;
+            let openTime = regOpenTimeInput.value;
+            let closeTime = regCloseTimeInput.value;
+            if (openTime === "") openTime = null;
+            if (closeTime === "") closeTime = null;
+            regSettings = { enabled, useTimer, openTime, closeTime };
+            saveRegSettingsToStorage();
         });
+    }
+    if (useTimerCheckbox) {
+        useTimerCheckbox.addEventListener("change", (e) => toggleTimerFields(e.target.checked));
+    }
+    tabBtns.forEach(btn => {
+        btn.addEventListener("click", () => { switchTab(btn.getAttribute("data-tab")); });
     });
-    // Показать приветственный экран, если первый раз
+    // Важно: убедимся, что контент виден перед проверкой заставки
+    document.querySelector(".racing-container").style.visibility = "visible";
     checkAndShowSplash();
 }
 document.addEventListener("DOMContentLoaded", init);
