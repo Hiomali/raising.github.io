@@ -6,64 +6,71 @@
     <title>Phoenix Racing Cup | Регистрация команд</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;600;700;800&family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- ПРИВЕТСТВЕННАЯ ЗАСТАВКА (показывается один раз) -->
-<div id="splashScreen" class="splash-screen">
-    <div class="splash-content">
-        <div class="splash-logo"><i class="fas fa-dragon"></i> PHOENIX RACING</div>
-        <div class="splash-title">NINGBOWORLODRONE</div>
-        <div class="splash-sub">WORLD DRONE RACING CUP • OFFICIAL TIMING</div>
-        <div class="splash-date">28–31 MAR 2026</div>
-        <div class="splash-message"><i class="fas fa-flag-checkered"></i> Добро пожаловать в мир скоростных дронов!</div>
-        <button id="closeSplashBtn" class="splash-btn">Войти в мир гонок <i class="fas fa-arrow-right"></i></button>
-    </div>
-</div>
-
 <div class="racing-container">
-    <div class="event-header">
+    <div class="event-header" id="eventHeader">
         <div class="logo-wrapper">
             <div class="title-section">
-                <h1>NINGBOWORLODRONE</h1>
+                <h1 id="mainTitle">NINGBOWORLODRONE</h1>
                 <div class="sub">WORLD DRONE RACING CUP • OFFICIAL TIMING</div>
             </div>
-            <div class="date-badge"><i class="fas fa-calendar-alt"></i> 2026</div>
+            <div class="date-badge"><i class="fas fa-calendar-alt"></i> 28–31 MAR 2026</div>
         </div>
         <div class="phoenix-tag">
-            <div class="phoenix-logo"><i class="fas fa-dragon"></i> PHOENIX RACING</div>
+            <div class="phoenix-logo" id="customLogo"><i class="fas fa-dragon"></i> PHOENIX RACING</div>
             <div class="cup-slogan"><i class="fas fa-trophy"></i> RACINGCUP // CHAMPIONSHIP EDITION</div>
         </div>
     </div>
 
-    <!-- Блок регистрации (скрывается, если регистрация закрыта) -->
+    <!-- МУЛЬТИЯЗЫЧНЫЙ ПЕРЕКЛЮЧАТЕЛЬ -->
+    <div class="lang-switch">
+        <button id="langRu" class="lang-btn active">RU</button>
+        <button id="langEn" class="lang-btn">EN</button>
+    </div>
+
+    <!-- БЛОК СТАТИСТИКИ (Топ-3 + График) -->
+    <div class="stats-dashboard">
+        <div class="top3-card">
+            <h3 id="top3Title">🏆 Топ-3 пилотов</h3>
+            <div id="top3List" class="top3-list">Загрузка...</div>
+        </div>
+        <div class="chart-card">
+            <h3 id="chartTitle">📈 Динамика очков (топ-5)</h3>
+            <canvas id="pointsChart" width="400" height="200" style="max-height: 200px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Блок регистрации (основной) -->
     <div class="register-section" id="registerSection">
-        <h3><i class="fas fa-user-plus"></i> Регистрация новой команды / пилота</h3>
+        <h3><i class="fas fa-user-plus"></i> <span id="regTitle">Регистрация новой команды / пилота</span></h3>
         <div class="register-form">
             <div class="form-field">
-                <label>Имя пилота</label>
-                <input type="text" id="regName" placeholder="Например: Phoenix Rookie">
+                <label id="regNameLabel">Имя пилота</label>
+                <input type="text" id="regName" placeholder="Phoenix Rookie">
             </div>
             <div class="form-field">
-                <label>Эмодзи страны</label>
+                <label id="regCodeLabel">Эмодзи страны</label>
                 <input type="text" id="regCountryCode" placeholder="🇺🇸" maxlength="2">
             </div>
             <div class="form-field">
-                <label>Страна</label>
+                <label id="regCountryLabel">Страна</label>
                 <input type="text" id="regCountryName" placeholder="USA">
             </div>
             <div class="form-field">
-                <button id="registerBtn" class="action-btn success"><i class="fas fa-check-circle"></i> Зарегистрировать</button>
+                <button id="registerBtn" class="action-btn success"><i class="fas fa-check-circle"></i> <span id="regBtnText">Зарегистрировать</span></button>
             </div>
         </div>
-        <div id="regTimer" class="reg-timer" style="font-size: 0.9rem; margin-top: 10px; color: #ffaa77;"></div>
+        <div id="regTimer" class="reg-timer"></div>
         <div id="regMessage" class="form-message"></div>
     </div>
 
     <!-- Сообщение, если регистрация закрыта -->
     <div id="registrationClosedMsg" class="register-closed-msg" style="display: none;">
-        <i class="fas fa-lock"></i> Регистрация временно закрыта. Следующее открытие: <span id="nextOpenTime">—</span>
+        <i class="fas fa-lock"></i> <span id="closedMsgText">Регистрация временно закрыта. Следующее открытие:</span> <span id="nextOpenTime">—</span>
     </div>
 
     <div class="table-controls">
@@ -71,7 +78,7 @@
             <i class="fas fa-search"></i>
             <input type="text" id="searchInput" placeholder="Поиск пилота или страны...">
         </div>
-        <div style="display: flex; gap: 12px; align-items: center;">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <div class="stats" id="rowStats">Показано: --</div>
             <button class="reset-btn" id="resetSearchBtn"><i class="fas fa-undo-alt"></i> Сброс</button>
             <button class="admin-login-btn" id="adminLoginBtn"><i class="fas fa-user-shield"></i> Админ</button>
@@ -88,19 +95,26 @@
                     <th data-sort="bestLap">ЛУЧШИЙ КРУГ (сек) <i class="fas fa-sort sort-icon"></i></th>
                     <th data-sort="points">ОЧКИ <i class="fas fa-sort sort-icon"></i></th>
                     <th>СТАТУС</th>
+                    <th>ДЕЙСТВИЯ</th>
                 </tr>
             </thead>
-            <tbody id="tableBody"><tr><td colspan="6">Загрузка...</td></tbody>
+            <tbody id="tableBody"><tr><td colspan="7">Загрузка...</td></tbody>
         </table>
     </div>
 
     <div class="heats-container" id="heatsContainer">
         <h3><i class="fas fa-flag-checkered"></i> Залёты (кто с кем)</h3>
         <div id="heatsList" class="heats-grid">Загрузка залётов...</div>
+        <button id="randomHeatsBtn" class="action-btn" style="background:#aa6e2e; margin-top:10px;"><i class="fas fa-random"></i> Жеребьёвка залётов</button>
+    </div>
+
+    <div class="playoff-container" id="playoffContainer">
+        <h3><i class="fas fa-trophy"></i> Плей-офф (финальная сетка)</h3>
+        <div id="playoffBracket" class="playoff-bracket">Недостаточно данных для плей-офф</div>
     </div>
 
     <div class="footer-note">
-        <i class="fas fa-microchip"></i> DRONE RACING LEAGUE • PHOENIX CUP 2026 • OFFICIAL RESULTS
+        <i class="fas fa-microchip"></i> DRONE RACING LEAGUE • PHOENIX CUP 2026
     </div>
 </div>
 
@@ -108,31 +122,34 @@
 <div id="adminModal" class="modal">
     <div class="modal-content">
         <span class="close-modal">&times;</span>
-        <h3><i class="fas fa-lock"></i> Вход в админ-панель</h3>
+        <h3>Вход в админ-панель</h3>
         <input type="password" id="adminPassword" placeholder="Введите пароль">
         <button id="submitAdminPass">Войти</button>
-        <div id="adminError" style="color: #ff8866; font-size: 0.8rem; margin-top: 8px;"></div>
+        <div id="adminError"></div>
     </div>
 </div>
 
-<!-- Админ-панель -->
+<!-- Админ-панель (без изменений) -->
 <div id="adminPanel" class="admin-panel">
     <div class="admin-header">
-        <h3><i class="fas fa-tools"></i> Панель управления</h3>
-        <button id="logoutAdminBtn" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Выйти</button>
+        <h3>Панель управления</h3>
+        <button id="logoutAdminBtn" class="logout-btn">Выйти</button>
     </div>
     <div class="admin-tabs">
-        <button class="tab-btn active" data-tab="pilotsTab"><i class="fas fa-users"></i> Пилоты</button>
-        <button class="tab-btn" data-tab="heatsTab"><i class="fas fa-layer-group"></i> Залёты</button>
-        <button class="tab-btn" data-tab="disqualTab"><i class="fas fa-ban"></i> Дисквалификации</button>
-        <button class="tab-btn" data-tab="regControlTab"><i class="fas fa-door-open"></i> Регистрация</button>
-        <button class="tab-btn" data-tab="passwordTab"><i class="fas fa-key"></i> Сменить пароль</button>
+        <button class="tab-btn active" data-tab="pilotsTab">Пилоты</button>
+        <button class="tab-btn" data-tab="heatsTab">Залёты</button>
+        <button class="tab-btn" data-tab="disqualTab">Дисквалификации</button>
+        <button class="tab-btn" data-tab="disqualHistoryTab">История дискв.</button>
+        <button class="tab-btn" data-tab="regControlTab">Регистрация</button>
+        <button class="tab-btn" data-tab="importExportTab">CSV</button>
+        <button class="tab-btn" data-tab="customizeTab">Оформление</button>
+        <button class="tab-btn" data-tab="logsTab">Логи</button>
+        <button class="tab-btn" data-tab="passwordTab">Сменить пароль</button>
     </div>
 
-    <!-- Вкладка: управление пилотами -->
     <div id="pilotsTab" class="tab-content active">
         <div class="admin-form">
-            <h4><i class="fas fa-plus-circle"></i> Добавить / Редактировать пилота (админ)</h4>
+            <h4>Добавить / Редактировать пилота (админ)</h4>
             <div class="form-row">
                 <div class="form-field"><label>Имя</label><input type="text" id="editName" placeholder="Nova Storm"></div>
                 <div class="form-field"><label>Эмодзи</label><input type="text" id="editCountryCode" placeholder="🇺🇸" maxlength="2" style="width:70px"></div>
@@ -145,32 +162,33 @@
             <div id="formMessage" class="form-message"></div>
         </div>
         <div class="admin-list">
-            <h4><i class="fas fa-list-ul"></i> Все пилоты (кликните для редактирования)</h4>
+            <h4>Все пилоты (кликните для редактирования)</h4>
             <div id="pilotsAdminList" class="pilots-grid"></div>
         </div>
     </div>
 
-    <!-- Вкладка: распределение залётов -->
     <div id="heatsTab" class="tab-content">
         <div class="heats-admin">
-            <h4><i class="fas fa-random"></i> Распределение пилотов по залётам</h4>
+            <h4>Распределение пилотов по залётам</h4>
             <div id="heatsAssignment" class="heats-assignment"></div>
-            <button id="saveHeatsBtn" class="action-btn success" style="margin-top: 1rem;"><i class="fas fa-save"></i> Сохранить распределение залётов</button>
+            <button id="saveHeatsBtn" class="action-btn success" style="margin-top: 1rem;"><i class="fas fa-save"></i> Сохранить распределение</button>
         </div>
     </div>
 
-    <!-- Вкладка: дисквалификации -->
     <div id="disqualTab" class="tab-content">
         <div class="admin-form">
-            <h4><i class="fas fa-ban"></i> Управление дисквалификацией</h4>
+            <h4>Управление дисквалификацией</h4>
             <div id="disqualList" class="disqual-list"></div>
         </div>
     </div>
 
-    <!-- Вкладка: управление регистрацией -->
+    <div id="disqualHistoryTab" class="tab-content">
+        <div id="disqualHistoryList" class="logs-list"></div>
+    </div>
+
     <div id="regControlTab" class="tab-content">
         <div class="admin-form">
-            <h4><i class="fas fa-door-closed"></i> Настройки регистрации команд</h4>
+            <h4>Настройки регистрации команд</h4>
             <div class="form-row">
                 <div class="form-field" style="flex-direction: row; align-items: center; gap: 8px;">
                     <input type="checkbox" id="regEnabledCheckbox" style="width: 20px; height: 20px;">
@@ -200,19 +218,46 @@
         </div>
     </div>
 
-    <!-- Вкладка: смена пароля и тест заставки -->
+    <div id="importExportTab" class="tab-content">
+        <div class="admin-form">
+            <h4>Экспорт/Импорт CSV</h4>
+            <button id="exportCsvBtn" class="action-btn success">Экспорт в CSV</button>
+            <br><br>
+            <input type="file" id="importCsvFile" accept=".csv">
+            <button id="importCsvBtn" class="action-btn">Импортировать CSV</button>
+            <div id="csvMessage" class="form-message"></div>
+        </div>
+    </div>
+
+    <div id="customizeTab" class="tab-content">
+        <div class="admin-form">
+            <h4>Кастомизация</h4>
+            <div class="form-row">
+                <div class="form-field"><label>Логотип (текст)</label><input type="text" id="customLogoText" placeholder="PHOENIX RACING"></div>
+                <div class="form-field"><button id="saveLogoBtn" class="action-btn">Сохранить логотип</button></div>
+            </div>
+            <div class="form-row">
+                <div class="form-field"><label>Фоновое изображение (URL)</label><input type="text" id="customBgUrl" placeholder="https://example.com/bg.jpg"></div>
+                <div class="form-field"><button id="saveBgBtn" class="action-btn">Применить фон</button></div>
+            </div>
+            <div id="customizeMsg" class="form-message"></div>
+        </div>
+    </div>
+
+    <div id="logsTab" class="tab-content">
+        <div id="adminLogsList" class="logs-list"></div>
+        <button id="clearLogsBtn" class="action-btn secondary">Очистить логи</button>
+    </div>
+
     <div id="passwordTab" class="tab-content">
         <div class="admin-form">
-            <h4><i class="fas fa-key"></i> Изменить пароль администратора</h4>
+            <h4>Изменить пароль администратора</h4>
             <div class="form-row">
                 <div class="form-field"><label>Новый пароль</label><input type="password" id="newPassword" placeholder="******"></div>
                 <div class="form-field"><label>Подтверждение</label><input type="password" id="confirmPassword" placeholder="******"></div>
                 <div class="form-field"><button id="changePasswordBtn" class="action-btn success"><i class="fas fa-save"></i> Сохранить пароль</button></div>
             </div>
             <div id="passwordMessage" class="form-message"></div>
-            <hr style="margin: 1rem 0; border-color: #ff884d55;">
-            <button id="testSplashBtn" class="action-btn" style="background: #aa6e2e;"><i class="fas fa-eye"></i> Показать заставку (тест)</button>
-            <div style="font-size:0.7rem; color:#aaa; margin-top: 8px;">Нажмите, чтобы снова увидеть приветственный экран (сбрасывает флаг посещения)</div>
         </div>
     </div>
 </div>

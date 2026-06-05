@@ -7,11 +7,18 @@ let isAdmin = false;
 let editingPilotId = null;
 let heatsMap = {};
 let adminPassword = "admin123";
+let adminLogs = [];
+let disqualHistory = [];
+let pointsHistory = [];
+let currentLang = "ru";
+let customLogo = "PHOENIX RACING";
+let customBg = "";
+let chart = null;
+let regCheckInterval = null;
+let regTimerInterval = null;
 
 // Настройки регистрации
 let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
-let regCheckInterval = null;
-let regTimerInterval = null;  // для обратного отсчёта
 
 // DOM элементы
 const tbody = document.getElementById("tableBody");
@@ -34,32 +41,24 @@ const editBestLap = document.getElementById("editBestLap");
 const editPoints = document.getElementById("editPoints");
 const formMessage = document.getElementById("formMessage");
 const pilotsAdminListDiv = document.getElementById("pilotsAdminList");
-const closeModalSpan = document.querySelector(".close-modal");
 const heatsListDiv = document.getElementById("heatsList");
 const heatsAssignmentDiv = document.getElementById("heatsAssignment");
 const saveHeatsBtn = document.getElementById("saveHeatsBtn");
+const randomHeatsBtn = document.getElementById("randomHeatsBtn");
 const newPasswordInput = document.getElementById("newPassword");
 const confirmPasswordInput = document.getElementById("confirmPassword");
 const changePasswordBtn = document.getElementById("changePasswordBtn");
 const passwordMessage = document.getElementById("passwordMessage");
 const disqualListDiv = document.getElementById("disqualList");
-const tabBtns = document.querySelectorAll(".tab-btn");
-const tabContents = document.querySelectorAll(".tab-content");
-
-// Регистрация
+const disqualHistoryDiv = document.getElementById("disqualHistoryList");
+const adminLogsDiv = document.getElementById("adminLogsList");
+const clearLogsBtn = document.getElementById("clearLogsBtn");
 const registerBtn = document.getElementById("registerBtn");
 const regName = document.getElementById("regName");
 const regCountryCode = document.getElementById("regCountryCode");
 const regCountryName = document.getElementById("regCountryName");
 const regMessage = document.getElementById("regMessage");
 const regTimerDiv = document.getElementById("regTimer");
-
-// Splash screen
-const splashScreen = document.getElementById("splashScreen");
-const closeSplashBtn = document.getElementById("closeSplashBtn");
-const testSplashBtn = document.getElementById("testSplashBtn");
-
-// Элементы управления регистрацией в админке
 const regEnabledCheckbox = document.getElementById("regEnabledCheckbox");
 const useTimerCheckbox = document.getElementById("useTimerCheckbox");
 const regOpenTimeInput = document.getElementById("regOpenTime");
@@ -67,136 +66,20 @@ const regCloseTimeInput = document.getElementById("regCloseTime");
 const saveRegSettingsBtn = document.getElementById("saveRegSettingsBtn");
 const regSettingsMessage = document.getElementById("regSettingsMessage");
 const timerFieldsDiv = document.getElementById("timerFields");
+const exportCsvBtn = document.getElementById("exportCsvBtn");
+const importCsvFile = document.getElementById("importCsvFile");
+const importCsvBtn = document.getElementById("importCsvBtn");
+const csvMessage = document.getElementById("csvMessage");
+const customLogoText = document.getElementById("customLogoText");
+const saveLogoBtn = document.getElementById("saveLogoBtn");
+const customBgUrl = document.getElementById("customBgUrl");
+const saveBgBtn = document.getElementById("saveBgBtn");
+const customizeMsg = document.getElementById("customizeMsg");
+const langRuBtn = document.getElementById("langRu");
+const langEnBtn = document.getElementById("langEn");
+const closeModalSpans = document.querySelectorAll(".close-modal");
 
-// ========== ФУНКЦИИ УПРАВЛЕНИЯ РЕГИСТРАЦИЕЙ ==========
-function loadRegSettings() {
-    const stored = localStorage.getItem("phoenixRegSettings");
-    if (stored) {
-        regSettings = JSON.parse(stored);
-    } else {
-        regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
-    }
-    if (isAdmin) {
-        if (regEnabledCheckbox) regEnabledCheckbox.checked = regSettings.enabled;
-        if (useTimerCheckbox) useTimerCheckbox.checked = regSettings.useTimer;
-        if (regOpenTimeInput) regOpenTimeInput.value = regSettings.openTime || "";
-        if (regCloseTimeInput) regCloseTimeInput.value = regSettings.closeTime || "";
-        toggleTimerFields(regSettings.useTimer);
-    }
-    updateRegistrationUI();
-    startTimerDisplay();
-}
-function saveRegSettingsToStorage() {
-    localStorage.setItem("phoenixRegSettings", JSON.stringify(regSettings));
-    updateRegistrationUI();
-    startTimerDisplay();
-    if (isAdmin && regSettingsMessage) {
-        regSettingsMessage.innerHTML = "✅ Настройки сохранены";
-        setTimeout(() => { if (regSettingsMessage) regSettingsMessage.innerHTML = ""; }, 2000);
-    }
-}
-function toggleTimerFields(show) {
-    if (timerFieldsDiv) timerFieldsDiv.style.display = show ? "flex" : "none";
-}
-function isRegistrationOpen() {
-    if (!regSettings.enabled) return false;
-    if (!regSettings.useTimer) return true;
-    const now = new Date();
-    let open = regSettings.openTime ? new Date(regSettings.openTime) : null;
-    let close = regSettings.closeTime ? new Date(regSettings.closeTime) : null;
-    if (open && close) return (now >= open && now <= close);
-    if (open && !close) return now >= open;
-    if (!open && close) return now <= close;
-    return true;
-}
-function updateRegistrationUI() {
-    const registerSection = document.getElementById("registerSection");
-    const closedMsgDiv = document.getElementById("registrationClosedMsg");
-    const nextOpenSpan = document.getElementById("nextOpenTime");
-    if (!registerSection) return;
-    const isOpen = isRegistrationOpen();
-    if (isOpen) {
-        registerSection.style.display = "block";
-        if (closedMsgDiv) closedMsgDiv.style.display = "none";
-    } else {
-        registerSection.style.display = "none";
-        if (closedMsgDiv) {
-            closedMsgDiv.style.display = "block";
-            let nextTime = null;
-            const now = new Date();
-            if (regSettings.useTimer) {
-                if (regSettings.openTime && new Date(regSettings.openTime) > now) {
-                    nextTime = new Date(regSettings.openTime);
-                } else if (regSettings.closeTime && new Date(regSettings.closeTime) > now) {
-                    nextTime = new Date(regSettings.closeTime);
-                }
-            }
-            if (nextTime) {
-                nextOpenSpan.innerText = nextTime.toLocaleString();
-            } else {
-                nextOpenSpan.innerText = "регистрация отключена администратором";
-            }
-        }
-    }
-}
-function startRegistrationWatcher() {
-    if (regCheckInterval) clearInterval(regCheckInterval);
-    regCheckInterval = setInterval(() => { updateRegistrationUI(); }, 60000);
-}
-// Таймер обратного отсчёта до конца регистрации (если активна и есть время закрытия)
-function startTimerDisplay() {
-    if (regTimerInterval) clearInterval(regTimerInterval);
-    function updateTimer() {
-        if (!regTimerDiv) return;
-        if (!regSettings.enabled || !regSettings.useTimer || !regSettings.closeTime) {
-            regTimerDiv.innerHTML = "";
-            return;
-        }
-        const now = new Date();
-        const closeDate = new Date(regSettings.closeTime);
-        if (closeDate <= now) {
-            regTimerDiv.innerHTML = "⏰ Регистрация закрыта";
-            return;
-        }
-        const diff = closeDate - now;
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (3600000)) / 60000);
-        const seconds = Math.floor((diff % 60000) / 1000);
-        regTimerDiv.innerHTML = `🕒 До конца регистрации: ${hours}ч ${minutes}м ${seconds}с`;
-    }
-    updateTimer();
-    regTimerInterval = setInterval(updateTimer, 1000);
-}
-
-// ========== ЗАСТАВКА (гарантированное отображение контента) ==========
-function checkAndShowSplash() {
-    const hasVisited = localStorage.getItem("phoenixSplashSeen");
-    if (!hasVisited) {
-        splashScreen.classList.remove("hide");
-        // Убедимся, что основной контент видим (но заставка перекрывает)
-        document.querySelector(".racing-container").style.visibility = "visible";
-        let timer = setTimeout(() => { hideSplashAndSave(); }, 4000);
-        closeSplashBtn.onclick = () => { clearTimeout(timer); hideSplashAndSave(); };
-    } else {
-        splashScreen.classList.add("hide");
-        // Убедимся, что контент виден
-        document.querySelector(".racing-container").style.visibility = "visible";
-    }
-}
-function hideSplashAndSave() {
-    splashScreen.classList.add("hide");
-    localStorage.setItem("phoenixSplashSeen", "true");
-    // Дополнительно: убеждаемся, что контент показан
-    document.querySelector(".racing-container").style.visibility = "visible";
-}
-function resetAndShowSplash() {
-    localStorage.removeItem("phoenixSplashSeen");
-    splashScreen.classList.remove("hide");
-    let timer = setTimeout(() => { hideSplashAndSave(); }, 4000);
-    closeSplashBtn.onclick = () => { clearTimeout(timer); hideSplashAndSave(); };
-}
-
-// ========== ВСПОМОГАТЕЛЬНЫЕ ==========
+// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 function escapeHtml(str) {
     if (str === null || str === undefined) return "";
     return String(str).replace(/[&<>]/g, function(m) {
@@ -207,31 +90,22 @@ function escapeHtml(str) {
     });
 }
 
-// ========== ЗАЛЁТЫ (4 максимум) ==========
-function getHeatCounts() {
-    const counts = {1:0,2:0,3:0,4:0,5:0,6:0};
-    pilotsData.forEach(pilot => {
-        if (pilot.disqualified) return;
-        const heat = heatsMap[pilot.id];
-        if (heat >= 1 && heat <= 6) counts[heat]++;
-    });
-    return counts;
-}
-function isHeatAvailable(heatNumber, excludePilotId = null) {
-    const counts = getHeatCounts();
-    let currentCount = counts[heatNumber] || 0;
-    if (excludePilotId !== null && heatsMap[excludePilotId] === heatNumber) currentCount--;
-    return currentCount < 4;
-}
-function getAvailableHeats(excludePilotId = null) {
-    const available = [];
-    for (let i = 1; i <= 6; i++) {
-        if (isHeatAvailable(i, excludePilotId)) available.push(i);
-    }
-    return available;
+// ========== ЛОГИРОВАНИЕ ==========
+function addLog(action, details) {
+    const log = { timestamp: new Date().toLocaleString(), action, details };
+    adminLogs.unshift(log);
+    if (adminLogs.length > 200) adminLogs.pop();
+    localStorage.setItem("adminLogs", JSON.stringify(adminLogs));
+    if (isAdmin) renderLogs();
 }
 
-// ========== ЗАГРУЗКА / СОХРАНЕНИЕ ==========
+function addDisqualHistory(pilotName, reason, actionType) {
+    disqualHistory.unshift({ date: new Date().toLocaleString(), pilotName, reason, actionType });
+    localStorage.setItem("disqualHistory", JSON.stringify(disqualHistory));
+    if (isAdmin) renderDisqualHistory();
+}
+
+// ========== ЗАГРУЗКА / СОХРАНЕНИЕ ДАННЫХ ==========
 function loadDataFromLocalStorage() {
     const stored = localStorage.getItem("phoenixRacingData");
     if (stored) {
@@ -267,12 +141,39 @@ function loadDataFromLocalStorage() {
         pilotsData.forEach(p => { heatsMap[p.id] = 0; });
         saveHeatsToLocalStorage();
     }
+    const storedLogs = localStorage.getItem("adminLogs");
+    if (storedLogs) adminLogs = JSON.parse(storedLogs);
+    const storedDisqualHistory = localStorage.getItem("disqualHistory");
+    if (storedDisqualHistory) disqualHistory = JSON.parse(storedDisqualHistory);
+    const storedPointsHistory = localStorage.getItem("pointsHistory");
+    if (storedPointsHistory) pointsHistory = JSON.parse(storedPointsHistory);
+    else capturePointsHistory();
+    const storedCustomLogo = localStorage.getItem("customLogo");
+    if (storedCustomLogo) customLogo = storedCustomLogo;
+    const storedCustomBg = localStorage.getItem("customBg");
+    if (storedCustomBg) customBg = storedCustomBg;
+    const customLogoElem = document.getElementById("customLogo");
+    if (customLogoElem) customLogoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
+    if (customBg) document.body.style.backgroundImage = `url(${customBg})`;
+    loadRegSettings();
 }
+
 function saveDataToLocalStorage() {
     localStorage.setItem("phoenixRacingData", JSON.stringify(pilotsData));
+    capturePointsHistory();
 }
+
 function saveHeatsToLocalStorage() {
     localStorage.setItem("heatsAssignment", JSON.stringify(heatsMap));
+}
+
+function capturePointsHistory() {
+    const now = new Date().toLocaleDateString();
+    const top5 = [...pilotsData].sort((a,b) => (b.points||0) - (a.points||0)).slice(0,5);
+    pointsHistory.push({ date: now, points: top5.map(p => p.points||0) });
+    if (pointsHistory.length > 10) pointsHistory.shift();
+    localStorage.setItem("pointsHistory", JSON.stringify(pointsHistory));
+    updateChart();
 }
 
 // ========== ОСНОВНАЯ ТАБЛИЦА ==========
@@ -302,8 +203,9 @@ function filterAndSortData() {
     });
     return filtered;
 }
-function updateSortIndicators(){
-    document.querySelectorAll("#racingTable th[data-sort]").forEach(th=>{
+
+function updateSortIndicators() {
+    document.querySelectorAll("#racingTable th[data-sort]").forEach(th => {
         const col = th.getAttribute("data-sort");
         const icon = th.querySelector(".sort-icon");
         if (!icon) return;
@@ -316,12 +218,13 @@ function updateSortIndicators(){
         }
     });
 }
-function renderTable(){
+
+function renderTable() {
     const allSorted = filterAndSortData();
     const activePilots = allSorted.filter(p => !p.disqualified);
     rowStatsSpan.innerHTML = `🏁 ${allSorted.length} / ${pilotsData.length} пилотов | Активных: ${activePilots.length}`;
     if (!allSorted.length) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">🚁 Нет пилотов</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">🚁 Нет пилотов</td></tr>`;
         updateSortIndicators();
         return;
     }
@@ -335,6 +238,7 @@ function renderTable(){
         const rowClass = p.disqualified ? "disqualified-row" : "";
         const bestLapDisplay = (p.bestLap === null || p.bestLap === undefined) ? "—" : p.bestLap.toFixed(3) + " s";
         const pointsDisplay = (p.points === null || p.points === undefined) ? "—" : p.points;
+        const actionsHtml = isAdmin ? `<td><button class="edit-pilot-btn" data-id="${p.id}"><i class="fas fa-edit"></i></button> <button class="delete-pilot-btn" data-id="${p.id}"><i class="fas fa-trash-alt"></i></button></td>` : `<td></td>`;
         html += `<tr class="${rowClass}">
             <td class="pos-cell">${displayPos}</td>
             <td><span class="pilot-name"><i class="fas fa-drone"></i> ${escapeHtml(p.name)}</span></td>
@@ -342,14 +246,82 @@ function renderTable(){
             <td><span class="time-cell">⏱️ ${bestLapDisplay}</span></td>
             <td class="points-cell"><i class="fas fa-star"></i> ${pointsDisplay}</td>
             <td class="status-cell">${statusHtml}</td>
+            ${actionsHtml}
         </tr>`;
     });
     tbody.innerHTML = html;
     updateSortIndicators();
+    document.querySelectorAll(".edit-pilot-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            startEditPilot(parseInt(btn.getAttribute("data-id")));
+        });
+    });
+    document.querySelectorAll(".delete-pilot-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (confirm("Удалить пилота?")) deletePilotById(parseInt(btn.getAttribute("data-id")));
+        });
+    });
 }
 
-// ========== ПУБЛИЧНЫЕ ЗАЛЁТЫ ==========
-function renderPublicHeats(){
+// ========== ТОП-3 И ГРАФИК ==========
+function updateTop3() {
+    const top3Div = document.getElementById("top3List");
+    if (!top3Div) return;
+    const sorted = [...pilotsData].filter(p => !p.disqualified).sort((a,b) => (b.points||0) - (a.points||0)).slice(0,3);
+    if (sorted.length === 0) {
+        top3Div.innerHTML = "Нет данных";
+        return;
+    }
+    top3Div.innerHTML = sorted.map((p, idx) => `
+        <div class="top3-item">
+            <span class="top3-name">${idx+1}. ${escapeHtml(p.name)} (${p.countryCode})</span>
+            <span class="top3-points">${p.points !== null ? p.points : "—"} очков</span>
+        </div>
+    `).join("");
+}
+
+function updateChart() {
+    const ctx = document.getElementById("pointsChart");
+    if (!ctx) return;
+    const labels = pointsHistory.map(h => h.date);
+    const datasets = [];
+    for (let i = 0; i < 5; i++) {
+        const data = pointsHistory.map(h => h.points[i] || 0);
+        datasets.push({ label: `Пилот ${i+1}`, data, borderColor: `hsl(${i*60}, 70%, 60%)`, fill: false, tension: 0.1 });
+    }
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { responsive: true, maintainAspectRatio: true } });
+}
+
+// ========== ЗАЛЁТЫ (ОГРАНИЧЕНИЕ 4) ==========
+function getHeatCounts() {
+    const counts = {1:0,2:0,3:0,4:0,5:0,6:0};
+    pilotsData.forEach(pilot => {
+        if (pilot.disqualified) return;
+        const heat = heatsMap[pilot.id];
+        if (heat >= 1 && heat <= 6) counts[heat]++;
+    });
+    return counts;
+}
+
+function isHeatAvailable(heatNumber, excludePilotId = null) {
+    const counts = getHeatCounts();
+    let currentCount = counts[heatNumber] || 0;
+    if (excludePilotId !== null && heatsMap[excludePilotId] === heatNumber) currentCount--;
+    return currentCount < 4;
+}
+
+function getAvailableHeats(excludePilotId = null) {
+    const available = [];
+    for (let i = 1; i <= 6; i++) {
+        if (isHeatAvailable(i, excludePilotId)) available.push(i);
+    }
+    return available;
+}
+
+function renderHeatsList() {
     if (!heatsListDiv) return;
     const groups = {};
     pilotsData.forEach(pilot => {
@@ -376,160 +348,7 @@ function renderPublicHeats(){
     heatsListDiv.innerHTML = html;
 }
 
-// ========== АДМИНКА: ПИЛОТЫ ==========
-function renderAdminList(){
-    pilotsAdminListDiv.innerHTML = "";
-    pilotsData.forEach(pilot => {
-        const bestLapText = (pilot.bestLap === null || pilot.bestLap === undefined) ? "—" : pilot.bestLap.toFixed(3) + "s";
-        const pointsText = (pilot.points === null || pilot.points === undefined) ? "—" : pilot.points;
-        const card = document.createElement("div");
-        card.className = "pilot-card";
-        card.innerHTML = `
-            <div><strong>${escapeHtml(pilot.name)}</strong> (${pilot.countryCode})<br>
-            <small>🏆 ${pointsText} pts | ⏱️ ${bestLapText} ${pilot.disqualified ? '| ⛔ ДИСКВ.' : ''}</small></div>
-            <div class="pilot-actions">
-                <button class="edit-pilot" data-id="${pilot.id}"><i class="fas fa-edit"></i></button>
-                <button class="delete-pilot" data-id="${pilot.id}"><i class="fas fa-trash-alt"></i></button>
-            </div>
-        `;
-        pilotsAdminListDiv.appendChild(card);
-    });
-    document.querySelectorAll(".edit-pilot").forEach(btn => {
-        btn.addEventListener("click", (e) => { e.stopPropagation(); startEditPilot(parseInt(btn.getAttribute("data-id"))); });
-    });
-    document.querySelectorAll(".delete-pilot").forEach(btn => {
-        btn.addEventListener("click", (e) => { e.stopPropagation(); deletePilotById(parseInt(btn.getAttribute("data-id"))); });
-    });
-}
-function startEditPilot(id){
-    const p = pilotsData.find(p => p.id === id);
-    if (!p) return;
-    editingPilotId = id;
-    editName.value = p.name;
-    editCountryCode.value = p.countryCode;
-    editCountryName.value = p.countryName;
-    editBestLap.value = (p.bestLap === null || p.bestLap === undefined) ? "" : p.bestLap;
-    editPoints.value = (p.points === null || p.points === undefined) ? "" : p.points;
-    addPilotBtn.innerHTML = '<i class="fas fa-pen"></i> Сохранить';
-    cancelEditBtn.style.display = "inline-block";
-    formMessage.innerHTML = "Редактирование: " + p.name;
-}
-function cancelEdit(){
-    editingPilotId = null;
-    addPilotBtn.innerHTML = '<i class="fas fa-save"></i> Добавить';
-    cancelEditBtn.style.display = "none";
-    editName.value = editCountryCode.value = editCountryName.value = editBestLap.value = editPoints.value = "";
-    formMessage.innerHTML = "";
-}
-function addOrUpdatePilot(){
-    const name = editName.value.trim();
-    const cc = editCountryCode.value.trim();
-    const cn = editCountryName.value.trim();
-    let lap = editBestLap.value.trim() === "" ? null : parseFloat(editBestLap.value);
-    let pts = editPoints.value.trim() === "" ? null : parseInt(editPoints.value);
-    if (!name || !cc || !cn) { formMessage.innerHTML = "❌ Заполните имя, эмодзи и страну!"; return; }
-    if (lap !== null && isNaN(lap)) { formMessage.innerHTML = "❌ Лучший круг должен быть числом (или оставьте пустым)"; return; }
-    if (pts !== null && isNaN(pts)) { formMessage.innerHTML = "❌ Очки должны быть числом (или оставьте пустым)"; return; }
-    if (editingPilotId !== null){
-        const idx = pilotsData.findIndex(p => p.id === editingPilotId);
-        if (idx !== -1){
-            pilotsData[idx] = { ...pilotsData[idx], name, countryCode: cc, countryName: cn, bestLap: lap, points: pts };
-            formMessage.innerHTML = "✅ Пилот обновлён";
-        }
-        editingPilotId = null;
-    } else {
-        const newId = Date.now();
-        pilotsData.push({ id: newId, name, countryCode: cc, countryName: cn, bestLap: lap, points: pts, disqualified: false, disqualificationReason: "" });
-        heatsMap[newId] = 0;
-        formMessage.innerHTML = "✅ Пилот добавлен";
-    }
-    saveDataToLocalStorage();
-    saveHeatsToLocalStorage();
-    cancelEdit();
-    renderTable();
-    if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
-    renderPublicHeats();
-}
-function deletePilotById(id){
-    if (confirm("Удалить пилота?")){
-        pilotsData = pilotsData.filter(p => p.id !== id);
-        delete heatsMap[id];
-        saveDataToLocalStorage();
-        saveHeatsToLocalStorage();
-        renderTable();
-        if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
-        renderPublicHeats();
-        cancelEdit();
-    }
-}
-
-// ========== АДМИНКА: ДИСКВАЛИФИКАЦИИ ==========
-function renderDisqualList(){
-    if (!disqualListDiv) return;
-    disqualListDiv.innerHTML = "";
-    pilotsData.forEach(pilot => {
-        const item = document.createElement("div");
-        item.className = "disqual-item";
-        item.innerHTML = `
-            <div class="disqual-info">
-                <strong>${escapeHtml(pilot.name)}</strong> (${pilot.countryCode})<br>
-                <small>Текущий статус: ${pilot.disqualified ? '⛔ ДИСКВАЛИФИЦИРОВАН' : '✅ Активен'}</small>
-                ${pilot.disqualified ? `<br><small>Причина: ${escapeHtml(pilot.disqualificationReason) || 'не указана'}</small>` : ''}
-            </div>
-            <div class="disqual-actions">
-                ${!pilot.disqualified ?
-                    `<input type="text" id="reason_${pilot.id}" class="disqual-reason-input" placeholder="Причина дискв.">
-                     <button class="disqualify-btn" data-id="${pilot.id}">Дисквалифицировать</button>` :
-                    `<button class="restore-btn" data-id="${pilot.id}">Восстановить</button>`
-                }
-            </div>
-        `;
-        disqualListDiv.appendChild(item);
-    });
-    document.querySelectorAll(".disqualify-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-            const id = parseInt(btn.getAttribute("data-id"));
-            const reasonInput = document.getElementById(`reason_${id}`);
-            const reason = reasonInput ? reasonInput.value.trim() : "";
-            disqualifyPilot(id, reason || "Нарушение регламента");
-        });
-    });
-    document.querySelectorAll(".restore-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-            const id = parseInt(btn.getAttribute("data-id"));
-            restorePilot(id);
-        });
-    });
-}
-function disqualifyPilot(id, reason){
-    const pilot = pilotsData.find(p => p.id === id);
-    if (pilot && !pilot.disqualified){
-        pilot.disqualified = true;
-        pilot.disqualificationReason = reason;
-        saveDataToLocalStorage();
-        renderTable();
-        renderDisqualList();
-        renderPublicHeats();
-        if (isAdmin) { renderAdminList(); renderHeatsAssignment(); }
-        formMessage.innerHTML = `⛔ ${pilot.name} дисквалифицирован. Причина: ${reason}`;
-    }
-}
-function restorePilot(id){
-    const pilot = pilotsData.find(p => p.id === id);
-    if (pilot && pilot.disqualified){
-        pilot.disqualified = false;
-        pilot.disqualificationReason = "";
-        saveDataToLocalStorage();
-        renderTable();
-        renderDisqualList();
-        renderPublicHeats();
-        if (isAdmin) { renderAdminList(); renderHeatsAssignment(); }
-        formMessage.innerHTML = `✅ ${pilot.name} восстановлен.`;
-    }
-}
-
-// ========== АДМИНКА: ЗАЛЁТЫ ==========
-function renderHeatsAssignment(){
+function renderHeatsAssignment() {
     if (!heatsAssignmentDiv) return;
     let html = `<div style="font-weight:bold; margin-bottom:8px;">Выберите номер залёта для каждого пилота (0 – не участвует, максимум 4 пилота на залёт)</div>`;
     pilotsData.forEach(pilot => {
@@ -569,7 +388,8 @@ function renderHeatsAssignment(){
         });
     });
 }
-function saveHeatsDistribution(){
+
+function saveHeatsDistribution() {
     const counts = getHeatCounts();
     let overflow = false;
     for (let i = 1; i <= 6; i++) {
@@ -581,54 +401,381 @@ function saveHeatsDistribution(){
     }
     if (overflow) return;
     saveHeatsToLocalStorage();
-    renderPublicHeats();
+    renderHeatsList();
     formMessage.innerHTML = "✅ Распределение по залётам сохранено!";
     setTimeout(() => { if(formMessage) formMessage.innerHTML = ""; }, 2000);
+    addLog("Залёты", "Распределение сохранено");
 }
 
-// ========== СМЕНА ПАРОЛЯ ==========
-function changeAdminPassword(){
-    const newPass = newPasswordInput.value;
-    const confirm = confirmPasswordInput.value;
-    if (!newPass || newPass.length < 4){
-        passwordMessage.innerHTML = "Пароль должен быть не менее 4 символов";
-        return;
+function randomizeHeats() {
+    const active = pilotsData.filter(p => !p.disqualified);
+    const heats = [[],[],[],[],[],[]];
+    for (let p of active) {
+        let placed = false;
+        for (let h = 0; h < 6; h++) {
+            if (heats[h].length < 4) {
+                heats[h].push(p.id);
+                heatsMap[p.id] = h+1;
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) heatsMap[p.id] = 0;
     }
-    if (newPass !== confirm){
-        passwordMessage.innerHTML = "Пароли не совпадают";
-        return;
-    }
-    adminPassword = newPass;
-    localStorage.setItem("adminPassword", adminPassword);
-    passwordMessage.innerHTML = "✅ Пароль успешно изменён!";
-    setTimeout(() => { passwordMessage.innerHTML = ""; }, 2000);
-    newPasswordInput.value = "";
-    confirmPasswordInput.value = "";
+    saveHeatsToLocalStorage();
+    renderHeatsList();
+    if (isAdmin) renderHeatsAssignment();
+    addLog("Жеребьёвка", "Случайное распределение по залётам");
+    alert("Жеребьёвка выполнена!");
 }
 
-// ========== АДМИН ВХОД/ВЫХОД ==========
-function showAdminModal(){ adminModal.style.display = "flex"; adminPasswordInput.value = ""; adminErrorSpan.innerText = ""; }
-function closeAdminModal(){ adminModal.style.display = "none"; }
-function loginAdmin(){
-    if (adminPasswordInput.value === adminPassword){
-        isAdmin = true;
-        closeAdminModal();
-        adminPanel.style.display = "block";
-        renderAdminList();
-        renderDisqualList();
-        renderHeatsAssignment();
-        cancelEdit();
-        document.querySelector(".tab-btn[data-tab='pilotsTab']").click();
+// ========== ПЛЕЙ-ОФФ (ТУРНИРНАЯ СЕТКА) ==========
+function renderPlayoff() {
+    const container = document.getElementById("playoffBracket");
+    if (!container) return;
+    const activePilots = pilotsData.filter(p => !p.disqualified);
+    if (activePilots.length < 2) {
+        container.innerHTML = "Недостаточно данных для плей-офф (нужно минимум 2 пилота)";
+        return;
+    }
+    const heats = {};
+    activePilots.forEach(p => {
+        const heat = heatsMap[p.id];
+        if (heat >= 1 && heat <= 6) {
+            if (!heats[heat]) heats[heat] = [];
+            heats[heat].push(p);
+        }
+    });
+    const winners = [];
+    for (let h=1; h<=6; h++) {
+        if (heats[h] && heats[h].length) {
+            const best = heats[h].reduce((a,b) => (a.points||0) > (b.points||0) ? a : b);
+            winners.push(best);
+        }
+    }
+    if (winners.length < 2) {
+        container.innerHTML = "Недостаточно победителей залётов для сетки";
+        return;
+    }
+    let bracketHtml = `<div class="playoff-bracket">`;
+    for (let i=0; i<winners.length; i+=2) {
+        const p1 = winners[i];
+        const p2 = winners[i+1];
+        bracketHtml += `<div class="playoff-match"><strong>Матч ${Math.floor(i/2)+1}</strong><br>`;
+        bracketHtml += `${escapeHtml(p1.name)} (${p1.countryCode}) — ${p1.points||"—"} очков<br>`;
+        if (p2) bracketHtml += `vs ${escapeHtml(p2.name)} (${p2.countryCode}) — ${p2.points||"—"} очков`;
+        else bracketHtml += `— свободен —`;
+        bracketHtml += `</div>`;
+    }
+    bracketHtml += `</div>`;
+    container.innerHTML = bracketHtml;
+}
+
+// ========== АДМИНКА: ПИЛОТЫ ==========
+function renderAdminList() {
+    pilotsAdminListDiv.innerHTML = "";
+    pilotsData.forEach(pilot => {
+        const bestLapText = (pilot.bestLap === null || pilot.bestLap === undefined) ? "—" : pilot.bestLap.toFixed(3) + "s";
+        const pointsText = (pilot.points === null || pilot.points === undefined) ? "—" : pilot.points;
+        const card = document.createElement("div");
+        card.className = "pilot-card";
+        card.innerHTML = `
+            <div><strong>${escapeHtml(pilot.name)}</strong> (${pilot.countryCode})<br>
+            <small>🏆 ${pointsText} pts | ⏱️ ${bestLapText} ${pilot.disqualified ? '| ⛔ ДИСКВ.' : ''}</small></div>
+            <div class="pilot-actions">
+                <button class="edit-pilot" data-id="${pilot.id}"><i class="fas fa-edit"></i></button>
+                <button class="delete-pilot" data-id="${pilot.id}"><i class="fas fa-trash-alt"></i></button>
+            </div>
+        `;
+        pilotsAdminListDiv.appendChild(card);
+    });
+    document.querySelectorAll(".edit-pilot").forEach(btn => {
+        btn.addEventListener("click", (e) => { e.stopPropagation(); startEditPilot(parseInt(btn.getAttribute("data-id"))); });
+    });
+    document.querySelectorAll(".delete-pilot").forEach(btn => {
+        btn.addEventListener("click", (e) => { e.stopPropagation(); if(confirm("Удалить пилота?")) deletePilotById(parseInt(btn.getAttribute("data-id"))); });
+    });
+}
+
+function startEditPilot(id){
+    const p = pilotsData.find(p => p.id === id);
+    if (!p) return;
+    editingPilotId = id;
+    editName.value = p.name;
+    editCountryCode.value = p.countryCode;
+    editCountryName.value = p.countryName;
+    editBestLap.value = (p.bestLap === null || p.bestLap === undefined) ? "" : p.bestLap;
+    editPoints.value = (p.points === null || p.points === undefined) ? "" : p.points;
+    addPilotBtn.innerHTML = '<i class="fas fa-pen"></i> Сохранить';
+    cancelEditBtn.style.display = "inline-block";
+    formMessage.innerHTML = "Редактирование: " + p.name;
+}
+
+function cancelEdit(){
+    editingPilotId = null;
+    addPilotBtn.innerHTML = '<i class="fas fa-save"></i> Добавить';
+    cancelEditBtn.style.display = "none";
+    editName.value = editCountryCode.value = editCountryName.value = editBestLap.value = editPoints.value = "";
+    formMessage.innerHTML = "";
+}
+
+function addOrUpdatePilot(){
+    const name = editName.value.trim();
+    const cc = editCountryCode.value.trim();
+    const cn = editCountryName.value.trim();
+    let lap = editBestLap.value.trim() === "" ? null : parseFloat(editBestLap.value);
+    let pts = editPoints.value.trim() === "" ? null : parseInt(editPoints.value);
+    if (!name || !cc || !cn) { formMessage.innerHTML = "❌ Заполните имя, эмодзи и страну!"; return; }
+    if (lap !== null && isNaN(lap)) { formMessage.innerHTML = "❌ Лучший круг должен быть числом (или оставьте пустым)"; return; }
+    if (pts !== null && isNaN(pts)) { formMessage.innerHTML = "❌ Очки должны быть числом (или оставьте пустым)"; return; }
+    if (editingPilotId !== null){
+        const idx = pilotsData.findIndex(p => p.id === editingPilotId);
+        if (idx !== -1){
+            pilotsData[idx] = { ...pilotsData[idx], name, countryCode: cc, countryName: cn, bestLap: lap, points: pts };
+            formMessage.innerHTML = "✅ Пилот обновлён";
+            addLog("Редактирование", `Пилот ${name} обновлён`);
+        }
+        editingPilotId = null;
     } else {
-        adminErrorSpan.innerText = "Неверный пароль!";
+        const newId = Date.now();
+        pilotsData.push({ id: newId, name, countryCode: cc, countryName: cn, bestLap: lap, points: pts, disqualified: false, disqualificationReason: "" });
+        heatsMap[newId] = 0;
+        formMessage.innerHTML = "✅ Пилот добавлен";
+        addLog("Добавление", `Новый пилот ${name}`);
     }
-}
-function logoutAdmin(){
-    isAdmin = false;
-    adminPanel.style.display = "none";
+    saveDataToLocalStorage();
+    saveHeatsToLocalStorage();
+    cancelEdit();
+    renderTable();
+    updateTop3();
+    renderPlayoff();
+    if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
+    renderHeatsList();
 }
 
-// ========== РЕГИСТРАЦИЯ КОМАНДЫ ==========
+function deletePilotById(id){
+    const pilot = pilotsData.find(p => p.id === id);
+    if (pilot) addLog("Удаление", `Пилот ${pilot.name} удалён`);
+    pilotsData = pilotsData.filter(p => p.id !== id);
+    delete heatsMap[id];
+    saveDataToLocalStorage();
+    saveHeatsToLocalStorage();
+    renderTable();
+    updateTop3();
+    renderPlayoff();
+    if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
+    renderHeatsList();
+    cancelEdit();
+}
+
+// ========== ДИСКВАЛИФИКАЦИИ ==========
+function renderDisqualList() {
+    if (!disqualListDiv) return;
+    disqualListDiv.innerHTML = "";
+    pilotsData.forEach(pilot => {
+        const item = document.createElement("div");
+        item.className = "disqual-item";
+        item.innerHTML = `
+            <div class="disqual-info">
+                <strong>${escapeHtml(pilot.name)}</strong> (${pilot.countryCode})<br>
+                <small>Текущий статус: ${pilot.disqualified ? '⛔ ДИСКВАЛИФИЦИРОВАН' : '✅ Активен'}</small>
+                ${pilot.disqualified ? `<br><small>Причина: ${escapeHtml(pilot.disqualificationReason) || 'не указана'}</small>` : ''}
+            </div>
+            <div class="disqual-actions">
+                ${!pilot.disqualified ?
+                    `<input type="text" id="reason_${pilot.id}" class="disqual-reason-input" placeholder="Причина дискв.">
+                     <button class="disqualify-btn" data-id="${pilot.id}">Дисквалифицировать</button>` :
+                    `<button class="restore-btn" data-id="${pilot.id}">Восстановить</button>`
+                }
+            </div>
+        `;
+        disqualListDiv.appendChild(item);
+    });
+    document.querySelectorAll(".disqualify-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const id = parseInt(btn.getAttribute("data-id"));
+            const reasonInput = document.getElementById(`reason_${id}`);
+            const reason = reasonInput ? reasonInput.value.trim() : "";
+            disqualifyPilot(id, reason || "Нарушение регламента");
+        });
+    });
+    document.querySelectorAll(".restore-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const id = parseInt(btn.getAttribute("data-id"));
+            restorePilot(id);
+        });
+    });
+}
+
+function disqualifyPilot(id, reason){
+    const pilot = pilotsData.find(p => p.id === id);
+    if (pilot && !pilot.disqualified){
+        pilot.disqualified = true;
+        pilot.disqualificationReason = reason;
+        saveDataToLocalStorage();
+        renderTable();
+        renderDisqualList();
+        renderHeatsList();
+        updateTop3();
+        renderPlayoff();
+        if (isAdmin) { renderAdminList(); renderHeatsAssignment(); }
+        addLog("Дисквалификация", `${pilot.name} - ${reason}`);
+        addDisqualHistory(pilot.name, reason, "дисквалифицирован");
+        formMessage.innerHTML = `⛔ ${pilot.name} дисквалифицирован. Причина: ${reason}`;
+    }
+}
+
+function restorePilot(id){
+    const pilot = pilotsData.find(p => p.id === id);
+    if (pilot && pilot.disqualified){
+        pilot.disqualified = false;
+        pilot.disqualificationReason = "";
+        saveDataToLocalStorage();
+        renderTable();
+        renderDisqualList();
+        renderHeatsList();
+        updateTop3();
+        renderPlayoff();
+        if (isAdmin) { renderAdminList(); renderHeatsAssignment(); }
+        addLog("Восстановление", `${pilot.name} восстановлен`);
+        addDisqualHistory(pilot.name, "", "восстановлен");
+        formMessage.innerHTML = `✅ ${pilot.name} восстановлен.`;
+    }
+}
+
+function renderDisqualHistory() {
+    if (!disqualHistoryDiv) return;
+    if (disqualHistory.length === 0) {
+        disqualHistoryDiv.innerHTML = "<p>История пуста</p>";
+        return;
+    }
+    disqualHistoryDiv.innerHTML = disqualHistory.map(h => `
+        <div class="log-item">
+            <strong>${h.date}</strong> — ${h.pilotName} — <span style="color:#ffaa77;">${h.actionType}</span>${h.reason ? ` (${h.reason})` : ''}
+        </div>
+    `).join("");
+}
+
+function renderLogs() {
+    if (!adminLogsDiv) return;
+    if (adminLogs.length === 0) {
+        adminLogsDiv.innerHTML = "<p>Логи пусты</p>";
+        return;
+    }
+    adminLogsDiv.innerHTML = adminLogs.map(log => `
+        <div class="log-item">
+            <strong>${log.timestamp}</strong> — ${log.action}: ${log.details}
+        </div>
+    `).join("");
+}
+
+// ========== УПРАВЛЕНИЕ РЕГИСТРАЦИЕЙ ==========
+function loadRegSettings() {
+    const stored = localStorage.getItem("phoenixRegSettings");
+    if (stored) {
+        regSettings = JSON.parse(stored);
+    } else {
+        regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
+    }
+    if (isAdmin) {
+        if (regEnabledCheckbox) regEnabledCheckbox.checked = regSettings.enabled;
+        if (useTimerCheckbox) useTimerCheckbox.checked = regSettings.useTimer;
+        if (regOpenTimeInput) regOpenTimeInput.value = regSettings.openTime || "";
+        if (regCloseTimeInput) regCloseTimeInput.value = regSettings.closeTime || "";
+        toggleTimerFields(regSettings.useTimer);
+    }
+    updateRegistrationUI();
+    startTimerDisplay();
+}
+
+function saveRegSettingsToStorage() {
+    localStorage.setItem("phoenixRegSettings", JSON.stringify(regSettings));
+    updateRegistrationUI();
+    startTimerDisplay();
+    if (isAdmin && regSettingsMessage) {
+        regSettingsMessage.innerHTML = "✅ Настройки сохранены";
+        setTimeout(() => { if (regSettingsMessage) regSettingsMessage.innerHTML = ""; }, 2000);
+    }
+    addLog("Регистрация", `Настройки обновлены: enabled=${regSettings.enabled}, useTimer=${regSettings.useTimer}`);
+}
+
+function toggleTimerFields(show) {
+    if (timerFieldsDiv) timerFieldsDiv.style.display = show ? "flex" : "none";
+}
+
+function isRegistrationOpen() {
+    if (!regSettings.enabled) return false;
+    if (!regSettings.useTimer) return true;
+    const now = new Date();
+    let open = regSettings.openTime ? new Date(regSettings.openTime) : null;
+    let close = regSettings.closeTime ? new Date(regSettings.closeTime) : null;
+    if (open && close) return (now >= open && now <= close);
+    if (open && !close) return now >= open;
+    if (!open && close) return now <= close;
+    return true;
+}
+
+function updateRegistrationUI() {
+    const registerSection = document.getElementById("registerSection");
+    const closedMsgDiv = document.getElementById("registrationClosedMsg");
+    const nextOpenSpan = document.getElementById("nextOpenTime");
+    if (!registerSection) return;
+    const isOpen = isRegistrationOpen();
+    if (isOpen) {
+        registerSection.style.display = "block";
+        if (closedMsgDiv) closedMsgDiv.style.display = "none";
+    } else {
+        registerSection.style.display = "none";
+        if (closedMsgDiv) {
+            closedMsgDiv.style.display = "block";
+            let nextTime = null;
+            const now = new Date();
+            if (regSettings.useTimer) {
+                if (regSettings.openTime && new Date(regSettings.openTime) > now) {
+                    nextTime = new Date(regSettings.openTime);
+                } else if (regSettings.closeTime && new Date(regSettings.closeTime) > now) {
+                    nextTime = new Date(regSettings.closeTime);
+                }
+            }
+            if (nextTime) {
+                nextOpenSpan.innerText = nextTime.toLocaleString();
+            } else {
+                nextOpenSpan.innerText = "регистрация отключена администратором";
+            }
+        }
+    }
+}
+
+function startRegistrationWatcher() {
+    if (regCheckInterval) clearInterval(regCheckInterval);
+    regCheckInterval = setInterval(() => { updateRegistrationUI(); }, 60000);
+}
+
+function startTimerDisplay() {
+    if (regTimerInterval) clearInterval(regTimerInterval);
+    function updateTimer() {
+        if (!regTimerDiv) return;
+        if (!regSettings.enabled || !regSettings.useTimer || !regSettings.closeTime) {
+            regTimerDiv.innerHTML = "";
+            return;
+        }
+        const now = new Date();
+        const closeDate = new Date(regSettings.closeTime);
+        if (closeDate <= now) {
+            regTimerDiv.innerHTML = "⏰ Регистрация закрыта";
+            return;
+        }
+        const diff = closeDate - now;
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (3600000)) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        regTimerDiv.innerHTML = `🕒 До конца регистрации: ${hours}ч ${minutes}м ${seconds}с`;
+    }
+    updateTimer();
+    regTimerInterval = setInterval(updateTimer, 1000);
+}
+
+// ========== РЕГИСТРАЦИЯ НОВОГО ПИЛОТА ==========
 function registerNewPilot() {
     if (!isRegistrationOpen()) {
         regMessage.innerHTML = "❌ Регистрация в данный момент закрыта";
@@ -673,23 +820,166 @@ function registerNewPilot() {
     regMessage.innerHTML = message;
     setTimeout(() => { regMessage.innerHTML = ""; }, 5000);
     renderTable();
-    renderPublicHeats();
+    renderHeatsList();
+    updateTop3();
+    renderPlayoff();
     if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
+    addLog("Регистрация", `Новая команда: ${name}`);
 }
 
-// ========== ВКЛАДКИ ==========
-function switchTab(tabId){
-    tabContents.forEach(tc => tc.classList.remove("active"));
-    document.getElementById(tabId).classList.add("active");
-    tabBtns.forEach(btn => btn.classList.remove("active"));
-    document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add("active");
-    if (tabId === "heatsTab") renderHeatsAssignment();
-    if (tabId === "pilotsTab") renderAdminList();
-    if (tabId === "disqualTab") renderDisqualList();
+// ========== CSV ЭКСПОРТ/ИМПОРТ ==========
+function exportToCSV() {
+    const csvRows = [["id","name","countryCode","countryName","bestLap","points","disqualified","disqualificationReason"]];
+    for (let p of pilotsData) {
+        csvRows.push([p.id, p.name, p.countryCode, p.countryName, p.bestLap ?? "", p.points ?? "", p.disqualified, p.disqualificationReason]);
+    }
+    const csv = csvRows.map(row => row.join(",")).join("\n");
+    const blob = new Blob([csv], {type: "text/csv"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "pilots.csv";
+    a.click();
+    addLog("Экспорт", "CSV выгружен");
+}
+
+function importFromCSV(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const rows = text.split("\n").map(row => row.split(","));
+        const newPilots = [];
+        for (let i=1; i<rows.length; i++) {
+            if (rows[i].length < 7) continue;
+            const id = parseInt(rows[i][0]) || Date.now()+i;
+            const name = rows[i][1];
+            const countryCode = rows[i][2];
+            const countryName = rows[i][3];
+            const bestLap = rows[i][4] === "" ? null : parseFloat(rows[i][4]);
+            const points = rows[i][5] === "" ? null : parseInt(rows[i][5]);
+            const disqualified = rows[i][6] === "true";
+            const disqualificationReason = rows[i][7] || "";
+            if (name && countryCode && countryName) {
+                newPilots.push({ id, name, countryCode, countryName, bestLap, points, disqualified, disqualificationReason });
+            }
+        }
+        if (newPilots.length) {
+            pilotsData = newPilots;
+            heatsMap = {};
+            pilotsData.forEach(p => { heatsMap[p.id] = 0; });
+            saveDataToLocalStorage();
+            saveHeatsToLocalStorage();
+            renderTable();
+            renderHeatsList();
+            updateTop3();
+            renderPlayoff();
+            if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
+            csvMessage.innerHTML = `✅ Импортировано ${newPilots.length} пилотов`;
+            addLog("Импорт", `CSV импортирован, ${newPilots.length} записей`);
+        } else {
+            csvMessage.innerHTML = "❌ Не найдено валидных данных в CSV";
+        }
+    };
+    reader.readAsText(file);
+}
+
+// ========== КАСТОМИЗАЦИЯ ==========
+function saveCustomLogo() {
+    const newLogo = customLogoText.value.trim();
+    if (newLogo) {
+        customLogo = newLogo;
+        localStorage.setItem("customLogo", customLogo);
+        const logoElem = document.getElementById("customLogo");
+        if (logoElem) logoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
+        customizeMsg.innerHTML = "Логотип сохранён";
+        setTimeout(() => customizeMsg.innerHTML = "", 2000);
+        addLog("Оформление", `Логотип изменён на ${customLogo}`);
+    }
+}
+
+function saveCustomBg() {
+    const bgUrl = customBgUrl.value.trim();
+    customBg = bgUrl;
+    localStorage.setItem("customBg", customBg);
+    document.body.style.backgroundImage = bgUrl ? `url(${bgUrl})` : "";
+    customizeMsg.innerHTML = "Фон применён";
+    setTimeout(() => customizeMsg.innerHTML = "", 2000);
+    addLog("Оформление", `Фоновое изображение изменено`);
+}
+
+// ========== АДМИН ВХОД/ВЫХОД ==========
+function showAdminModal() { adminModal.style.display = "flex"; adminPasswordInput.value = ""; adminErrorSpan.innerText = ""; }
+function closeAdminModal() { adminModal.style.display = "none"; }
+function loginAdmin() {
+    if (adminPasswordInput.value === adminPassword) {
+        isAdmin = true;
+        closeAdminModal();
+        adminPanel.style.display = "block";
+        renderAdminList();
+        renderDisqualList();
+        renderHeatsAssignment();
+        renderLogs();
+        renderDisqualHistory();
+        addLog("Вход", "Администратор вошёл в панель");
+    } else {
+        adminErrorSpan.innerText = "Неверный пароль!";
+    }
+}
+function logoutAdmin() {
+    isAdmin = false;
+    adminPanel.style.display = "none";
+    addLog("Выход", "Администратор вышел");
+}
+
+// ========== МУЛЬТИЯЗЫЧНОСТЬ ==========
+const translations = {
+    ru: {
+        top3Title: "🏆 Топ-3 пилотов",
+        chartTitle: "📈 Динамика очков (топ-5)",
+        regTitle: "Регистрация новой команды / пилота",
+        regNameLabel: "Имя пилота",
+        regCodeLabel: "Эмодзи страны",
+        regCountryLabel: "Страна",
+        regBtnText: "Зарегистрировать",
+        closedMsgText: "Регистрация временно закрыта. Следующее открытие:"
+    },
+    en: {
+        top3Title: "🏆 Top-3 pilots",
+        chartTitle: "📈 Points dynamics (top-5)",
+        regTitle: "New team / pilot registration",
+        regNameLabel: "Pilot name",
+        regCodeLabel: "Country emoji",
+        regCountryLabel: "Country",
+        regBtnText: "Register",
+        closedMsgText: "Registration is temporarily closed. Next opening:"
+    }
+};
+
+function setLanguage(lang) {
+    currentLang = lang;
+    const t = translations[lang];
+    const top3TitleElem = document.getElementById("top3Title");
+    if (top3TitleElem) top3TitleElem.innerText = t.top3Title;
+    const chartTitleElem = document.getElementById("chartTitle");
+    if (chartTitleElem) chartTitleElem.innerText = t.chartTitle;
+    const regTitleElem = document.getElementById("regTitle");
+    if (regTitleElem) regTitleElem.innerText = t.regTitle;
+    const regNameLabelElem = document.getElementById("regNameLabel");
+    if (regNameLabelElem) regNameLabelElem.innerText = t.regNameLabel;
+    const regCodeLabelElem = document.getElementById("regCodeLabel");
+    if (regCodeLabelElem) regCodeLabelElem.innerText = t.regCodeLabel;
+    const regCountryLabelElem = document.getElementById("regCountryLabel");
+    if (regCountryLabelElem) regCountryLabelElem.innerText = t.regCountryLabel;
+    const regBtnTextSpan = document.querySelector("#registerBtn span");
+    if (regBtnTextSpan) regBtnTextSpan.innerText = t.regBtnText;
+    const closedMsgTextSpan = document.getElementById("closedMsgText");
+    if (closedMsgTextSpan) closedMsgTextSpan.innerText = t.closedMsgText;
+    document.querySelectorAll(".lang-btn").forEach(btn => btn.classList.remove("active"));
+    if (lang === "ru") langRuBtn.classList.add("active");
+    else langEnBtn.classList.add("active");
 }
 
 // ========== СОРТИРОВКА ==========
-function attachSortListeners(){
+function attachSortListeners() {
     document.querySelectorAll("#racingTable th[data-sort]").forEach(th => {
         const key = th.getAttribute("data-sort");
         if (key === "pos") return;
@@ -701,47 +991,79 @@ function attachSortListeners(){
     });
 }
 
+// ========== ВКЛАДКИ ==========
+function switchTab(tabId) {
+    const tabContents = document.querySelectorAll(".tab-content");
+    tabContents.forEach(tc => tc.classList.remove("active"));
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) targetTab.classList.add("active");
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    tabBtns.forEach(btn => btn.classList.remove("active"));
+    const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+    if (activeBtn) activeBtn.classList.add("active");
+    if (tabId === "heatsTab") renderHeatsAssignment();
+    if (tabId === "pilotsTab") renderAdminList();
+    if (tabId === "disqualTab") renderDisqualList();
+    if (tabId === "disqualHistoryTab") renderDisqualHistory();
+    if (tabId === "logsTab") renderLogs();
+}
+
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
-function init(){
+function init() {
     loadDataFromLocalStorage();
-    loadRegSettings();
     renderTable();
     attachSortListeners();
-    renderPublicHeats();
+    renderHeatsList();
+    updateTop3();
+    renderPlayoff();
+    updateChart();
     startRegistrationWatcher();
+    startTimerDisplay();
+
     searchInput.addEventListener("input", () => { currentFilter = searchInput.value; renderTable(); });
     resetBtn.addEventListener("click", () => { searchInput.value = ""; currentFilter = ""; renderTable(); });
     adminLoginBtn.addEventListener("click", showAdminModal);
-    closeModalSpan.addEventListener("click", closeAdminModal);
+    closeModalSpans.forEach(span => span.addEventListener("click", function() { this.closest(".modal").style.display = "none"; }));
     window.addEventListener("click", (e) => { if (e.target === adminModal) closeAdminModal(); });
     submitAdminPass.addEventListener("click", loginAdmin);
     logoutAdminBtn.addEventListener("click", logoutAdmin);
     addPilotBtn.addEventListener("click", addOrUpdatePilot);
     cancelEditBtn.addEventListener("click", cancelEdit);
     saveHeatsBtn.addEventListener("click", saveHeatsDistribution);
-    changePasswordBtn.addEventListener("click", changeAdminPassword);
+    randomHeatsBtn.addEventListener("click", randomizeHeats);
+    changePasswordBtn.addEventListener("click", () => {
+        const newPass = newPasswordInput.value;
+        const confirm = confirmPasswordInput.value;
+        if (!newPass || newPass.length < 4) { passwordMessage.innerHTML = "Пароль должен быть не менее 4 символов"; return; }
+        if (newPass !== confirm) { passwordMessage.innerHTML = "Пароли не совпадают"; return; }
+        adminPassword = newPass;
+        localStorage.setItem("adminPassword", adminPassword);
+        passwordMessage.innerHTML = "✅ Пароль успешно изменён!";
+        setTimeout(() => passwordMessage.innerHTML = "", 2000);
+        addLog("Безопасность", "Пароль администратора изменён");
+    });
     registerBtn.addEventListener("click", registerNewPilot);
-    if (testSplashBtn) testSplashBtn.addEventListener("click", resetAndShowSplash);
     if (saveRegSettingsBtn) {
         saveRegSettingsBtn.addEventListener("click", () => {
-            const enabled = regEnabledCheckbox.checked;
-            const useTimer = useTimerCheckbox.checked;
-            let openTime = regOpenTimeInput.value;
-            let closeTime = regCloseTimeInput.value;
-            if (openTime === "") openTime = null;
-            if (closeTime === "") closeTime = null;
-            regSettings = { enabled, useTimer, openTime, closeTime };
+            regSettings.enabled = regEnabledCheckbox.checked;
+            regSettings.useTimer = useTimerCheckbox.checked;
+            regSettings.openTime = regOpenTimeInput.value || null;
+            regSettings.closeTime = regCloseTimeInput.value || null;
             saveRegSettingsToStorage();
         });
     }
-    if (useTimerCheckbox) {
-        useTimerCheckbox.addEventListener("change", (e) => toggleTimerFields(e.target.checked));
-    }
-    tabBtns.forEach(btn => {
+    if (useTimerCheckbox) useTimerCheckbox.addEventListener("change", (e) => toggleTimerFields(e.target.checked));
+    if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportToCSV);
+    if (importCsvBtn) importCsvBtn.addEventListener("click", () => { if (importCsvFile.files[0]) importFromCSV(importCsvFile.files[0]); else csvMessage.innerText = "Выберите файл"; });
+    if (saveLogoBtn) saveLogoBtn.addEventListener("click", saveCustomLogo);
+    if (saveBgBtn) saveBgBtn.addEventListener("click", saveCustomBg);
+    if (clearLogsBtn) clearLogsBtn.addEventListener("click", () => { adminLogs = []; localStorage.setItem("adminLogs", "[]"); renderLogs(); addLog("Очистка", "Логи удалены"); });
+    const tabBtnsAll = document.querySelectorAll(".tab-btn");
+    tabBtnsAll.forEach(btn => {
         btn.addEventListener("click", () => { switchTab(btn.getAttribute("data-tab")); });
     });
-    // Важно: убедимся, что контент виден перед проверкой заставки
-    document.querySelector(".racing-container").style.visibility = "visible";
-    checkAndShowSplash();
+    langRuBtn.addEventListener("click", () => setLanguage("ru"));
+    langEnBtn.addEventListener("click", () => setLanguage("en"));
+    setLanguage("ru");
 }
 document.addEventListener("DOMContentLoaded", init);
