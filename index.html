@@ -3,12 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Phoenix Racing Cup | Залёты и дисквалификации</title>
+    <title>Phoenix Racing Cup | Регистрация команд</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;600;700;800&family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<!-- ПРИВЕТСТВЕННАЯ ЗАСТАВКА (показывается один раз) -->
+<div id="splashScreen" class="splash-screen">
+    <div class="splash-content">
+        <div class="splash-logo">
+            <i class="fas fa-dragon"></i> PHOENIX RACING
+        </div>
+        <div class="splash-title">NINGBOWORLODRONE</div>
+        <div class="splash-sub">WORLD DRONE RACING CUP • OFFICIAL TIMING</div>
+        <div class="splash-date">28–31 MAR 2026</div>
+        <div class="splash-message">
+            <i class="fas fa-flag-checkered"></i> Добро пожаловать в мир скоростных дронов!
+        </div>
+        <button id="closeSplashBtn" class="splash-btn">Войти в мир гонок <i class="fas fa-arrow-right"></i></button>
+    </div>
+</div>
+
 <div class="racing-container">
     <div class="event-header">
         <div class="logo-wrapper">
@@ -22,6 +39,29 @@
             <div class="phoenix-logo"><i class="fas fa-dragon"></i> PHOENIX RACING</div>
             <div class="cup-slogan"><i class="fas fa-trophy"></i> RACINGCUP // CHAMPIONSHIP EDITION</div>
         </div>
+    </div>
+
+    <!-- Блок регистрации команды (без очков и круга) -->
+    <div class="register-section">
+        <h3><i class="fas fa-user-plus"></i> Регистрация новой команды / пилота</h3>
+        <div class="register-form">
+            <div class="form-field">
+                <label>Имя пилота</label>
+                <input type="text" id="regName" placeholder="Например: Phoenix Rookie">
+            </div>
+            <div class="form-field">
+                <label>Эмодзи страны</label>
+                <input type="text" id="regCountryCode" placeholder="🇺🇸" maxlength="2">
+            </div>
+            <div class="form-field">
+                <label>Страна</label>
+                <input type="text" id="regCountryName" placeholder="USA">
+            </div>
+            <div class="form-field">
+                <button id="registerBtn" class="action-btn success"><i class="fas fa-check-circle"></i> Зарегистрировать</button>
+            </div>
+        </div>
+        <div id="regMessage" class="form-message"></div>
     </div>
 
     <div class="table-controls">
@@ -47,9 +87,10 @@
                     <th data-sort="bestLap">ЛУЧШИЙ КРУГ (сек) <i class="fas fa-sort sort-icon"></i></th>
                     <th data-sort="points">ОЧКИ <i class="fas fa-sort sort-icon"></i></th>
                     <th>СТАТУС</th>
-                </tr>
+                 </tr>
             </thead>
-            <tbody id="tableBody"><tr><td colspan="6">Загрузка...</td></tr></tbody>
+            <tbody id="tableBody"><tr><td colspan="6">Загрузка...</td></tr>
+            </tbody>
         </table>
     </div>
 
@@ -81,8 +122,6 @@
         <h3><i class="fas fa-tools"></i> Панель управления</h3>
         <button id="logoutAdminBtn" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Выйти</button>
     </div>
-
-    <!-- Вкладки админки -->
     <div class="admin-tabs">
         <button class="tab-btn active" data-tab="pilotsTab"><i class="fas fa-users"></i> Пилоты</button>
         <button class="tab-btn" data-tab="heatsTab"><i class="fas fa-layer-group"></i> Залёты</button>
@@ -93,7 +132,7 @@
     <!-- Вкладка: управление пилотами -->
     <div id="pilotsTab" class="tab-content active">
         <div class="admin-form">
-            <h4><i class="fas fa-plus-circle"></i> Добавить / Редактировать пилота</h4>
+            <h4><i class="fas fa-plus-circle"></i> Добавить / Редактировать пилота (админ)</h4>
             <div class="form-row">
                 <div class="form-field"><label>Имя</label><input type="text" id="editName" placeholder="Nova Storm"></div>
                 <div class="form-field"><label>Эмодзи</label><input type="text" id="editCountryCode" placeholder="🇺🇸" maxlength="2" style="width:70px"></div>

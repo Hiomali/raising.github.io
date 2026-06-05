@@ -15,6 +15,111 @@ body {
     color: #eef5ff;
 }
 
+/* ----- ПРИВЕТСТВЕННЫЙ ЭКРАН (SPLASH) ----- */
+.splash-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at center, #0a0f2e, #02040c);
+    backdrop-filter: blur(0px);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.8s ease, visibility 0.8s ease;
+    font-family: 'Orbitron', monospace;
+}
+.splash-screen.hide {
+    opacity: 0;
+    visibility: hidden;
+}
+.splash-content {
+    text-align: center;
+    animation: fadeInUp 1s ease-out;
+    max-width: 600px;
+    padding: 2rem;
+}
+.splash-logo {
+    font-size: 3rem;
+    font-weight: 800;
+    background: linear-gradient(145deg, #e0eaff, #ffae70);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 1rem;
+}
+.splash-logo i {
+    color: #ff914d;
+    font-size: 3rem;
+}
+.splash-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, #FFB347, #FF5E00);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 0.5rem;
+}
+.splash-sub {
+    font-size: 0.9rem;
+    letter-spacing: 2px;
+    color: #9aaec0;
+    margin-bottom: 1rem;
+}
+.splash-date {
+    font-size: 1.2rem;
+    color: #ffbc7a;
+    border: 1px solid #ff884d;
+    display: inline-block;
+    padding: 0.3rem 1rem;
+    border-radius: 40px;
+    margin-bottom: 1.5rem;
+}
+.splash-message {
+    font-size: 1.2rem;
+    background: rgba(255, 100, 0, 0.2);
+    padding: 0.8rem 1.5rem;
+    border-radius: 60px;
+    margin-bottom: 2rem;
+    color: #ffd7a5;
+}
+.splash-message i {
+    margin-right: 10px;
+    color: #ff884d;
+}
+.splash-btn {
+    background: #ff7b2c;
+    border: none;
+    padding: 0.8rem 2rem;
+    border-radius: 60px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #0a0f1e;
+    cursor: pointer;
+    transition: 0.3s;
+    font-family: 'Orbitron', monospace;
+}
+.splash-btn:hover {
+    transform: scale(1.05);
+    background: #ff9a4a;
+    box-shadow: 0 0 20px rgba(255, 100, 0, 0.5);
+}
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ----- ОСТАЛЬНЫЕ СТИЛИ (как были) ----- */
 .racing-container {
     max-width: 1400px;
     width: 100%;
@@ -107,6 +212,50 @@ body {
     border-radius: 40px;
     border: 1px solid rgba(255, 100, 0, 0.5);
 }
+.register-section {
+    margin: 1.5rem 2rem;
+    background: rgba(8, 14, 26, 0.7);
+    border-radius: 1.5rem;
+    padding: 1.2rem;
+    border: 1px solid #ff884d;
+}
+.register-section h3 {
+    font-family: 'Orbitron', monospace;
+    color: #ffbc7a;
+    margin-bottom: 1rem;
+}
+.register-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+}
+.register-form .form-field {
+    flex: 1 1 150px;
+}
+.register-form .form-field label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+}
+.register-form input {
+    background: #1f2a3c;
+    border: none;
+    padding: 0.5rem;
+    border-radius: 12px;
+    color: white;
+    width: 100%;
+}
+#registerBtn {
+    background: #ff7b2c;
+    color: #0a0f1e;
+    font-weight: bold;
+    padding: 0.5rem 1.2rem;
+    white-space: nowrap;
+}
+#regMessage {
+    margin-top: 0.8rem;
+    font-size: 0.8rem;
+}
 .table-controls {
     padding: 1.2rem 2rem 0.8rem 2rem;
     display: flex;
@@ -197,7 +346,6 @@ body {
 .racing-table tbody tr.disqualified-row {
     background: rgba(200, 50, 50, 0.2);
     border-left: 3px solid #ff4444;
-    position: relative;
 }
 .racing-table tbody tr.disqualified-row:hover {
     background: rgba(200, 50, 50, 0.35);
@@ -399,4 +547,8 @@ body {
     .form-row { flex-direction: column; align-items: stretch; }
     .heats-container { margin: 1rem; }
     .modal-content { width: 90%; }
+    .register-section { margin: 1rem; }
+    .register-form { flex-direction: column; align-items: stretch; }
+    .splash-title { font-size: 1.5rem; }
+    .splash-logo { font-size: 2rem; }
 }
