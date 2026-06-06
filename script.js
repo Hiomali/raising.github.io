@@ -1,19 +1,7 @@
-// ========== FIREBASE ИНИЦИАЛИЗАЦИЯ ==========
-// 🔧 ВСТАВЬТЕ ВАШ КОНФИГ FIREBASE ЗДЕСЬ 🔧
-const firebaseConfig = {
-    apiKey: "ВАШ_API_KEY",
-    authDomain: "ВАШ_ПРОЕКТ.firebaseapp.com",
-    projectId: "ВАШ_ID_ПРОЕКТА",
-    storageBucket: "ВАШ_ПРОЕКТ.appspot.com",
-    messagingSenderId: "123456789",
-    appId: "1:123456789:web:..."
-};
-
-// Инициализация Firebase (если не инициализирована)
-if (!firebase.apps || !firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-}
-const db = firebase.firestore();
+// ========== SUPABASE КОНФИГУРАЦИЯ ==========
+const SUPABASE_URL = "https://ggfpgupwjqusuizumfkz.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdnZnBndXB3anF1c3VpenVtZmt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3Mzg0NDgsImV4cCI6MjA5NjMxNDQ0OH0.jCzBwIdt5ZNWhyvVIwe6MN4rirEFJGTXHnWqq7YQcBA";
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
 let pilotsData = [];
@@ -34,8 +22,6 @@ let chart = null;
 let regCheckInterval = null;
 let regTimerInterval = null;
 let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
-let isFirestoreLoaded = false;
-let pendingSave = false;
 
 // DOM элементы
 const tbody = document.getElementById("tableBody");
@@ -122,33 +108,20 @@ function escapeHtml(str) {
     });
 }
 
-function addLog(action, details) {
-    const log = { timestamp: new Date().toLocaleString(), action, details };
-    adminLogs.unshift(log);
-    if (adminLogs.length > 200) adminLogs.pop();
-    // Сохраняем в Firestore
-    db.collection("adminLogs").doc("logs").set({ logs: adminLogs }, { merge: true })
-        .catch(err => console.error("Ошибка сохранения логов:", err));
-    if (isAdmin) renderLogs();
-}
-
-function addDisqualHistory(pilotName, reason, actionType) {
-    disqualHistory.unshift({ date: new Date().toLocaleString(), pilotName, reason, actionType });
-    if (disqualHistory.length > 200) disqualHistory.pop();
-    db.collection("disqualHistory").doc("history").set({ history: disqualHistory }, { merge: true })
-        .catch(err => console.error("Ошибка сохранения истории дискв.:", err));
-    if (isAdmin) renderDisqualHistory();
-}
-
-// ========== ЗАГРУЗКА И СОХРАНЕНИЕ В FIRESTORE ==========
-async function loadDataFromFirestore() {
+// ========== ЗАГРУЗКА И СОХРАНЕНИЕ В SUPABASE ==========
+async function loadAllData() {
     try {
-        // Загрузка пилотов
-        const pilotsSnap = await db.collection("pilots").doc("all").get();
-        if (pilotsSnap.exists) {
-            pilotsData = pilotsSnap.data().pilots || [];
+        // 1. Пилоты
+        const { data: pilots, error: pilotsErr } = await supabase.from('pilots').select('*');
+        if (pilotsErr) throw pilotsErr;
+        if (pilots && pilots.length) {
+            pilotsData = pilots.map(p => ({
+                ...p,
+                bestLap: p.bestLap === undefined ? null : p.bestLap,
+                points: p.points === undefined ? null : p.points
+            }));
         } else {
-            // Начальные данные
+            // начальные данные
             pilotsData = [
                 { id: Date.now()+1, name: "Max Velocity", countryCode: "🇺🇸", countryName: "USA", bestLap: 42.687, points: 285, disqualified: false, disqualificationReason: "" },
                 { id: Date.now()+2, name: "Sara Storm", countryCode: "🇬🇧", countryName: "UK", bestLap: 43.124, points: 272, disqualified: false, disqualificationReason: "" },
@@ -161,138 +134,143 @@ async function loadDataFromFirestore() {
                 { id: Date.now()+9, name: "Rocket Blade", countryCode: "🇧🇷", countryName: "Brazil", bestLap: 42.990, points: 263, disqualified: false, disqualificationReason: "" },
                 { id: Date.now()+10, name: "Sky Sphinx", countryCode: "🇿🇦", countryName: "South Africa", bestLap: 45.203, points: 230, disqualified: false, disqualificationReason: "" }
             ];
-            await db.collection("pilots").doc("all").set({ pilots: pilotsData });
+            await savePilotsToSupabase();
         }
 
-        // Загрузка heatsMap
-        const heatsSnap = await db.collection("heats").doc("map").get();
-        if (heatsSnap.exists) {
-            heatsMap = heatsSnap.data().map || {};
+        // 2. heatsMap
+        const { data: heats, error: heatsErr } = await supabase.from('heats').select('*');
+        if (heatsErr) throw heatsErr;
+        if (heats && heats.length) {
+            heatsMap = {};
+            heats.forEach(h => { heatsMap[h.pilot_id] = h.heat_number; });
         } else {
             heatsMap = {};
             pilotsData.forEach(p => { heatsMap[p.id] = 0; });
-            await db.collection("heats").doc("map").set({ map: heatsMap });
+            await saveHeatsToSupabase();
         }
 
-        // Загрузка настроек регистрации
-        const regSnap = await db.collection("regSettings").doc("settings").get();
-        if (regSnap.exists) {
-            regSettings = regSnap.data();
+        // 3. regSettings
+        const { data: reg, error: regErr } = await supabase.from('reg_settings').select('*').eq('id', 1).maybeSingle();
+        if (regErr) throw regErr;
+        if (reg) regSettings = reg;
+        else {
+            regSettings = { id: 1, enabled: true, useTimer: false, openTime: null, closeTime: null };
+            await supabase.from('reg_settings').upsert(regSettings);
+        }
+
+        // 4. adminLogs
+        const { data: logs, error: logsErr } = await supabase.from('admin_logs').select('*').order('id', { ascending: false }).limit(200);
+        if (logsErr) throw logsErr;
+        adminLogs = logs || [];
+
+        // 5. disqualHistory
+        const { data: discHist, error: discErr } = await supabase.from('disqual_history').select('*').order('id', { ascending: false }).limit(200);
+        if (discErr) throw discErr;
+        disqualHistory = discHist || [];
+
+        // 6. pointsHistory
+        const { data: pointsHist, error: pointsErr } = await supabase.from('points_history').select('*').order('id', { ascending: true });
+        if (pointsErr) throw pointsErr;
+        if (pointsHist && pointsHist.length) {
+            pointsHistory = pointsHist.map(h => ({ date: h.date, points: h.points }));
         } else {
-            regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
-            await db.collection("regSettings").doc("settings").set(regSettings);
+            capturePointsHistory();
         }
 
-        // Загрузка логов
-        const logsSnap = await db.collection("adminLogs").doc("logs").get();
-        if (logsSnap.exists) adminLogs = logsSnap.data().logs || [];
-
-        // Загрузка истории дисквалификаций
-        const discHistSnap = await db.collection("disqualHistory").doc("history").get();
-        if (discHistSnap.exists) disqualHistory = discHistSnap.data().history || [];
-
-        // Загрузка истории очков (для графика)
-        const pointsHistSnap = await db.collection("pointsHistory").doc("history").get();
-        if (pointsHistSnap.exists) pointsHistory = pointsHistSnap.data().history || [];
-        else capturePointsHistory(); // создаст начальную
-
-        // Загрузка кастомизации
-        const customSnap = await db.collection("customData").doc("data").get();
-        if (customSnap.exists) {
-            customLogo = customSnap.data().customLogo || "PHOENIX RACING";
-            customBg = customSnap.data().customBg || "";
+        // 7. customData
+        const { data: custom, error: customErr } = await supabase.from('custom_data').select('*').eq('id', 1).maybeSingle();
+        if (customErr) throw customErr;
+        if (custom) {
+            customLogo = custom.customLogo;
+            customBg = custom.customBg;
         } else {
-            await db.collection("customData").doc("data").set({ customLogo, customBg });
+            await supabase.from('custom_data').insert({ id: 1, customLogo, customBg });
         }
-        const customLogoElem = document.getElementById("customLogo");
-        if (customLogoElem) customLogoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
+        document.getElementById("customLogo").innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
         if (customBg) document.body.style.backgroundImage = `url(${customBg})`;
 
-        // Загрузка пароля администратора
-        const passSnap = await db.collection("adminPassword").doc("password").get();
-        if (passSnap.exists) adminPassword = passSnap.data().value;
-        else await db.collection("adminPassword").doc("password").set({ value: adminPassword });
+        // 8. adminPassword
+        const { data: pass, error: passErr } = await supabase.from('admin_password').select('*').eq('id', 1).maybeSingle();
+        if (passErr) throw passErr;
+        if (pass) adminPassword = pass.value;
+        else await supabase.from('admin_password').insert({ id: 1, value: adminPassword });
 
-        isFirestoreLoaded = true;
-        applyLoadedData();
+        // применить загруженные данные
+        renderTable();
+        renderHeatsList();
+        updateTop3();
+        renderPlayoff();
+        updateChart();
+        if (isAdmin) {
+            renderAdminList();
+            renderDisqualList();
+            renderHeatsAssignment();
+            renderLogs();
+            renderDisqualHistory();
+        }
+        loadRegSettingsToUI();
+        startRegistrationWatcher();
+        startTimerDisplay();
     } catch (err) {
-        console.error("Ошибка загрузки из Firestore:", err);
-        alert("Ошибка подключения к Firebase. Проверьте интернет и настройки конфигурации.");
+        console.error("Ошибка загрузки из Supabase:", err);
+        alert("Ошибка подключения к Supabase. Проверьте интернет и настройки.");
     }
 }
 
-function applyLoadedData() {
-    renderTable();
-    renderHeatsList();
-    updateTop3();
-    renderPlayoff();
-    updateChart();
-    if (isAdmin) {
-        renderAdminList();
-        renderDisqualList();
-        renderHeatsAssignment();
-        renderLogs();
-        renderDisqualHistory();
-    }
-    startRegistrationWatcher();
-    startTimerDisplay();
-    loadRegSettingsToUI();
+async function savePilotsToSupabase() {
+    const { error } = await supabase.from('pilots').upsert(pilotsData, { onConflict: 'id' });
+    if (error) console.error("Ошибка сохранения пилотов:", error);
 }
 
-async function savePilotsToFirestore() {
-    if (!isFirestoreLoaded) return;
-    try {
-        await db.collection("pilots").doc("all").set({ pilots: pilotsData });
-    } catch (err) { console.error("Ошибка сохранения пилотов:", err); }
+async function saveHeatsToSupabase() {
+    const heatsArray = Object.entries(heatsMap).map(([pilot_id, heat_number]) => ({ pilot_id: parseInt(pilot_id), heat_number }));
+    const { error } = await supabase.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
+    if (error) console.error("Ошибка сохранения залётов:", error);
 }
 
-async function saveHeatsToFirestore() {
-    if (!isFirestoreLoaded) return;
-    try {
-        await db.collection("heats").doc("map").set({ map: heatsMap });
-    } catch (err) { console.error("Ошибка сохранения залётов:", err); }
+async function saveRegSettingsToSupabase() {
+    const { error } = await supabase.from('reg_settings').upsert({ id: 1, ...regSettings });
+    if (error) console.error("Ошибка сохранения настроек регистрации:", error);
 }
 
-async function saveRegSettingsToFirestore() {
-    if (!isFirestoreLoaded) return;
-    try {
-        await db.collection("regSettings").doc("settings").set(regSettings);
-    } catch (err) { console.error("Ошибка сохранения настроек регистрации:", err); }
+async function addLogToSupabase(action, details) {
+    const log = { timestamp: new Date().toLocaleString(), action, details };
+    const { error } = await supabase.from('admin_logs').insert(log);
+    if (error) console.error("Ошибка сохранения лога:", error);
+    adminLogs.unshift(log);
+    if (adminLogs.length > 200) adminLogs.pop();
+    if (isAdmin) renderLogs();
 }
 
-async function saveCustomDataToFirestore() {
-    if (!isFirestoreLoaded) return;
-    try {
-        await db.collection("customData").doc("data").set({ customLogo, customBg });
-    } catch (err) { console.error("Ошибка сохранения кастомизации:", err); }
+async function addDisqualHistoryToSupabase(pilotName, reason, actionType) {
+    const record = { date: new Date().toLocaleString(), pilotName, reason, actionType };
+    const { error } = await supabase.from('disqual_history').insert(record);
+    if (error) console.error("Ошибка сохранения истории дискв.:", error);
+    disqualHistory.unshift(record);
+    if (disqualHistory.length > 200) disqualHistory.pop();
+    if (isAdmin) renderDisqualHistory();
 }
 
-async function saveAdminPasswordToFirestore() {
-    if (!isFirestoreLoaded) return;
-    try {
-        await db.collection("adminPassword").doc("password").set({ value: adminPassword });
-    } catch (err) { console.error("Ошибка сохранения пароля:", err); }
-}
-
-function capturePointsHistory() {
+async function capturePointsHistory() {
     const now = new Date().toLocaleDateString();
     const top5 = [...pilotsData].sort((a,b) => (b.points||0) - (a.points||0)).slice(0,5);
-    pointsHistory.push({ date: now, points: top5.map(p => p.points||0) });
+    const points = top5.map(p => p.points||0);
+    const record = { date: now, points: JSON.stringify(points) };
+    const { error } = await supabase.from('points_history').insert(record);
+    if (error) console.error("Ошибка сохранения истории очков:", error);
+    pointsHistory.push({ date: now, points });
     if (pointsHistory.length > 10) pointsHistory.shift();
-    db.collection("pointsHistory").doc("history").set({ history: pointsHistory })
-        .catch(err => console.error("Ошибка сохранения истории очков:", err));
     updateChart();
 }
 
-// Сохранение всех данных (вызывать после любых изменений)
-async function syncAllData() {
-    await savePilotsToFirestore();
-    await saveHeatsToFirestore();
-    await saveRegSettingsToFirestore();
-    await saveCustomDataToFirestore();
-    await saveAdminPasswordToFirestore();
-    capturePointsHistory(); // уже сохраняет историю
-    // Логи и история дискв. сохраняются моментально при вызове addLog/addDisqualHistory
+async function saveCustomToSupabase() {
+    const { error } = await supabase.from('custom_data').upsert({ id: 1, customLogo, customBg });
+    if (error) console.error("Ошибка сохранения кастомизации:", error);
+}
+
+async function saveAdminPasswordToSupabase() {
+    const { error } = await supabase.from('admin_password').upsert({ id: 1, value: adminPassword });
+    if (error) console.error("Ошибка сохранения пароля:", error);
 }
 
 // ========== ОСНОВНАЯ ТАБЛИЦА ==========
@@ -343,7 +321,7 @@ function renderTable() {
     const activePilots = allSorted.filter(p => !p.disqualified);
     rowStatsSpan.innerHTML = `🏁 ${allSorted.length} / ${pilotsData.length} пилотов | Активных: ${activePilots.length}`;
     if (!allSorted.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">🚁 Нет пилотов</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">🚁 Нет пилотов<\/td><\/tr>`;
         updateSortIndicators();
         return;
     }
@@ -363,19 +341,19 @@ function renderTable() {
                 <button class="edit-pilot-btn" data-id="${p.id}"><i class="fas fa-edit"></i></button>
                 <button class="delete-pilot-btn" data-id="${p.id}"><i class="fas fa-trash-alt"></i></button>
                 <button class="lap-btn" data-id="${p.id}" data-name="${escapeHtml(p.name)}"><i class="fas fa-stopwatch"></i> Засечь</button>
-            </td>`;
+            <\/td>`;
         } else {
             actionsHtml = `<td><\/td>`;
         }
         html += `<tr class="${rowClass}">
-            <td class="pos-cell">${displayPos}</td>
-            <td><span class="pilot-name"><i class="fas fa-drone"></i> ${escapeHtml(p.name)}</span></td>
-            <td><span class="country-flag">${p.countryCode}</span> ${escapeHtml(p.countryName)}</td>
-            <td><span class="time-cell">⏱️ ${bestLapDisplay}</span></td>
-            <td class="points-cell"><i class="fas fa-star"></i> ${pointsDisplay}</td>
-            <td class="status-cell">${statusHtml}</td>
+            <td class="pos-cell">${displayPos}<\/td>
+            <td><span class="pilot-name"><i class="fas fa-drone"></i> ${escapeHtml(p.name)}<\/span><\/td>
+            <td><span class="country-flag">${p.countryCode}</span> ${escapeHtml(p.countryName)}<\/td>
+            <td><span class="time-cell">⏱️ ${bestLapDisplay}<\/span><\/td>
+            <td class="points-cell"><i class="fas fa-star"></i> ${pointsDisplay}<\/td>
+            <td class="status-cell">${statusHtml}<\/td>
             ${actionsHtml}
-        </tr>`;
+        <\/tr>`;
     });
     tbody.innerHTML = html;
     updateSortIndicators();
@@ -417,7 +395,7 @@ function updateChart() {
     const labels = pointsHistory.map(h => h.date);
     const datasets = [];
     for (let i = 0; i < 5; i++) {
-        const data = pointsHistory.map(h => h.points[i] || 0);
+        const data = pointsHistory.map(h => (Array.isArray(h.points) ? h.points[i] : 0) || 0);
         datasets.push({ label: `Пилот ${i+1}`, data, borderColor: `hsl(${i*60}, 70%, 60%)`, fill: false, tension: 0.1 });
     }
     if (chart) chart.destroy();
@@ -518,7 +496,7 @@ function renderHeatsAssignment() {
     });
 }
 
-function saveHeatsDistribution() {
+async function saveHeatsDistribution() {
     const counts = getHeatCounts();
     let overflow = false;
     for (let i = 1; i <= 6; i++) {
@@ -529,14 +507,14 @@ function saveHeatsDistribution() {
         }
     }
     if (overflow) return;
-    saveHeatsToFirestore();
+    await saveHeatsToSupabase();
     renderHeatsList();
     formMessage.innerHTML = "✅ Распределение по залётам сохранено!";
     setTimeout(() => { if(formMessage) formMessage.innerHTML = ""; }, 2000);
-    addLog("Залёты", "Распределение сохранено");
+    addLogToSupabase("Залёты", "Распределение сохранено");
 }
 
-function randomizeHeats() {
+async function randomizeHeats() {
     const active = pilotsData.filter(p => !p.disqualified);
     const heats = [[],[],[],[],[],[]];
     for (let p of active) {
@@ -551,10 +529,10 @@ function randomizeHeats() {
         }
         if (!placed) heatsMap[p.id] = 0;
     }
-    saveHeatsToFirestore();
+    await saveHeatsToSupabase();
     renderHeatsList();
     if (isAdmin) renderHeatsAssignment();
-    addLog("Жеребьёвка", "Случайное распределение по залётам");
+    addLogToSupabase("Жеребьёвка", "Случайное распределение по залётам");
     alert("Жеребьёвка выполнена!");
 }
 
@@ -662,7 +640,7 @@ async function addOrUpdatePilot(){
         if (idx !== -1){
             pilotsData[idx] = { ...pilotsData[idx], name, countryCode: cc, countryName: cn, bestLap: lap, points: pts };
             formMessage.innerHTML = "✅ Пилот обновлён";
-            addLog("Редактирование", `Пилот ${name} обновлён`);
+            await addLogToSupabase("Редактирование", `Пилот ${name} обновлён`);
         }
         editingPilotId = null;
     } else {
@@ -670,10 +648,10 @@ async function addOrUpdatePilot(){
         pilotsData.push({ id: newId, name, countryCode: cc, countryName: cn, bestLap: lap, points: pts, disqualified: false, disqualificationReason: "" });
         heatsMap[newId] = 0;
         formMessage.innerHTML = "✅ Пилот добавлен";
-        addLog("Добавление", `Новый пилот ${name}`);
+        await addLogToSupabase("Добавление", `Новый пилот ${name}`);
     }
-    await savePilotsToFirestore();
-    await saveHeatsToFirestore();
+    await savePilotsToSupabase();
+    await saveHeatsToSupabase();
     cancelEdit();
     renderTable();
     updateTop3();
@@ -684,11 +662,11 @@ async function addOrUpdatePilot(){
 
 async function deletePilotById(id){
     const pilot = pilotsData.find(p => p.id === id);
-    if (pilot) addLog("Удаление", `Пилот ${pilot.name} удалён`);
+    if (pilot) await addLogToSupabase("Удаление", `Пилот ${pilot.name} удалён`);
     pilotsData = pilotsData.filter(p => p.id !== id);
     delete heatsMap[id];
-    await savePilotsToFirestore();
-    await saveHeatsToFirestore();
+    await savePilotsToSupabase();
+    await saveHeatsToSupabase();
     renderTable();
     updateTop3();
     renderPlayoff();
@@ -705,6 +683,7 @@ function openLapModal(pilotId, pilotName) {
     lapTimeMessage.innerHTML = "";
     lapTimeModal.style.display = "flex";
 }
+
 async function saveLapTime() {
     const time = parseFloat(lapTimeValue.value);
     if (isNaN(time) || time <= 0) {
@@ -716,11 +695,11 @@ async function saveLapTime() {
     const oldBest = pilot.bestLap;
     if (oldBest === null || time < oldBest) {
         pilot.bestLap = time;
-        await savePilotsToFirestore();
+        await savePilotsToSupabase();
         renderTable();
         updateTop3();
         renderPlayoff();
-        addLog("Засечка времени", `${pilot.name} – новый лучший круг: ${time.toFixed(3)}с (предыдущий: ${oldBest !== null ? oldBest.toFixed(3) : "—"})`);
+        await addLogToSupabase("Засечка времени", `${pilot.name} – новый лучший круг: ${time.toFixed(3)}с (предыдущий: ${oldBest !== null ? oldBest.toFixed(3) : "—"})`);
         lapTimeMessage.innerHTML = "✅ Время сохранено!";
         setTimeout(() => lapTimeModal.style.display = "none", 1000);
     } else {
@@ -755,12 +734,12 @@ async function importFromRotorHazard() {
                     if (pilot.bestLap === null || bestLap < pilot.bestLap) {
                         pilot.bestLap = bestLap;
                         updated++;
-                        addLog("RotorHazard импорт", `${pilot.name} – лучший круг обновлён до ${bestLap.toFixed(3)}с`);
+                        await addLogToSupabase("RotorHazard импорт", `${pilot.name} – лучший круг обновлён до ${bestLap.toFixed(3)}с`);
                     }
                 }
             }
         }
-        await savePilotsToFirestore();
+        await savePilotsToSupabase();
         renderTable();
         updateTop3();
         renderPlayoff();
@@ -769,6 +748,7 @@ async function importFromRotorHazard() {
         rhSyncMessage.innerHTML = `❌ Ошибка: ${err.message}. Попробуйте ручной ввод JSON.`;
     }
 }
+
 async function importManualJson() {
     const jsonText = rhManualJson.value.trim();
     if (!jsonText) {
@@ -791,12 +771,12 @@ async function importManualJson() {
                     if (pilot.bestLap === null || bestLap < pilot.bestLap) {
                         pilot.bestLap = bestLap;
                         updated++;
-                        addLog("RotorHazard ручной импорт", `${pilot.name} – новый лучший круг ${bestLap.toFixed(3)}с`);
+                        await addLogToSupabase("RotorHazard ручной импорт", `${pilot.name} – новый лучший круг ${bestLap.toFixed(3)}с`);
                     }
                 }
             }
         }
-        await savePilotsToFirestore();
+        await savePilotsToSupabase();
         renderTable();
         updateTop3();
         renderPlayoff();
@@ -850,15 +830,15 @@ async function disqualifyPilot(id, reason){
     if (pilot && !pilot.disqualified){
         pilot.disqualified = true;
         pilot.disqualificationReason = reason;
-        await savePilotsToFirestore();
+        await savePilotsToSupabase();
         renderTable();
         renderDisqualList();
         renderHeatsList();
         updateTop3();
         renderPlayoff();
         if (isAdmin) { renderAdminList(); renderHeatsAssignment(); }
-        addLog("Дисквалификация", `${pilot.name} - ${reason}`);
-        addDisqualHistory(pilot.name, reason, "дисквалифицирован");
+        await addLogToSupabase("Дисквалификация", `${pilot.name} - ${reason}`);
+        await addDisqualHistoryToSupabase(pilot.name, reason, "дисквалифицирован");
         formMessage.innerHTML = `⛔ ${pilot.name} дисквалифицирован. Причина: ${reason}`;
     }
 }
@@ -868,15 +848,15 @@ async function restorePilot(id){
     if (pilot && pilot.disqualified){
         pilot.disqualified = false;
         pilot.disqualificationReason = "";
-        await savePilotsToFirestore();
+        await savePilotsToSupabase();
         renderTable();
         renderDisqualList();
         renderHeatsList();
         updateTop3();
         renderPlayoff();
         if (isAdmin) { renderAdminList(); renderHeatsAssignment(); }
-        addLog("Восстановление", `${pilot.name} восстановлен`);
-        addDisqualHistory(pilot.name, "", "восстановлен");
+        await addLogToSupabase("Восстановление", `${pilot.name} восстановлен`);
+        await addDisqualHistoryToSupabase(pilot.name, "", "восстановлен");
         formMessage.innerHTML = `✅ ${pilot.name} восстановлен.`;
     }
 }
@@ -921,14 +901,14 @@ function loadRegSettingsToUI() {
 }
 
 function saveRegSettingsToStorage() {
-    saveRegSettingsToFirestore();
+    saveRegSettingsToSupabase();
     updateRegistrationUI();
     startTimerDisplay();
     if (isAdmin && regSettingsMessage) {
         regSettingsMessage.innerHTML = "✅ Настройки сохранены";
         setTimeout(() => { if (regSettingsMessage) regSettingsMessage.innerHTML = ""; }, 2000);
     }
-    addLog("Регистрация", `Настройки обновлены: enabled=${regSettings.enabled}, useTimer=${regSettings.useTimer}`);
+    addLogToSupabase("Регистрация", `Настройки обновлены: enabled=${regSettings.enabled}, useTimer=${regSettings.useTimer}`);
 }
 
 function toggleTimerFields(show) {
@@ -1040,8 +1020,8 @@ async function registerNewPilot() {
     };
     pilotsData.push(newPilot);
     heatsMap[newId] = assignedHeat;
-    await savePilotsToFirestore();
-    await saveHeatsToFirestore();
+    await savePilotsToSupabase();
+    await saveHeatsToSupabase();
     regName.value = "";
     regCountryCode.value = "";
     regCountryName.value = "";
@@ -1056,10 +1036,10 @@ async function registerNewPilot() {
     updateTop3();
     renderPlayoff();
     if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
-    addLog("Регистрация", `Новая команда: ${name}`);
+    await addLogToSupabase("Регистрация", `Новая команда: ${name}`);
 }
 
-// ========== CSV ЭКСПОРТ/ИМПОРТ ==========
+// ========== CSV ==========
 function exportToCSV() {
     const csvRows = [["id","name","countryCode","countryName","bestLap","points","disqualified","disqualificationReason"]];
     for (let p of pilotsData) {
@@ -1071,7 +1051,7 @@ function exportToCSV() {
     a.href = URL.createObjectURL(blob);
     a.download = "pilots.csv";
     a.click();
-    addLog("Экспорт", "CSV выгружен");
+    addLogToSupabase("Экспорт", "CSV выгружен");
 }
 
 async function importFromCSV(file) {
@@ -1098,15 +1078,15 @@ async function importFromCSV(file) {
             pilotsData = newPilots;
             heatsMap = {};
             pilotsData.forEach(p => { heatsMap[p.id] = 0; });
-            await savePilotsToFirestore();
-            await saveHeatsToFirestore();
+            await savePilotsToSupabase();
+            await saveHeatsToSupabase();
             renderTable();
             renderHeatsList();
             updateTop3();
             renderPlayoff();
             if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
             csvMessage.innerHTML = `✅ Импортировано ${newPilots.length} пилотов`;
-            addLog("Импорт", `CSV импортирован, ${newPilots.length} записей`);
+            await addLogToSupabase("Импорт", `CSV импортирован, ${newPilots.length} записей`);
         } else {
             csvMessage.innerHTML = "❌ Не найдено валидных данных в CSV";
         }
@@ -1119,23 +1099,23 @@ async function saveCustomLogo() {
     const newLogo = customLogoText.value.trim();
     if (newLogo) {
         customLogo = newLogo;
-        await saveCustomDataToFirestore();
+        await saveCustomToSupabase();
         const logoElem = document.getElementById("customLogo");
         if (logoElem) logoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
         customizeMsg.innerHTML = "Логотип сохранён";
         setTimeout(() => customizeMsg.innerHTML = "", 2000);
-        addLog("Оформление", `Логотип изменён на ${customLogo}`);
+        await addLogToSupabase("Оформление", `Логотип изменён на ${customLogo}`);
     }
 }
 
 async function saveCustomBg() {
     const bgUrl = customBgUrl.value.trim();
     customBg = bgUrl;
-    await saveCustomDataToFirestore();
+    await saveCustomToSupabase();
     document.body.style.backgroundImage = bgUrl ? `url(${bgUrl})` : "";
     customizeMsg.innerHTML = "Фон применён";
     setTimeout(() => customizeMsg.innerHTML = "", 2000);
-    addLog("Оформление", `Фоновое изображение изменено`);
+    await addLogToSupabase("Оформление", `Фоновое изображение изменено`);
 }
 
 // ========== АДМИН ВХОД/ВЫХОД ==========
@@ -1151,7 +1131,7 @@ function loginAdmin() {
         renderHeatsAssignment();
         renderLogs();
         renderDisqualHistory();
-        addLog("Вход", "Администратор вошёл в панель");
+        addLogToSupabase("Вход", "Администратор вошёл в панель");
     } else {
         adminErrorSpan.innerText = "Неверный пароль!";
     }
@@ -1159,7 +1139,7 @@ function loginAdmin() {
 function logoutAdmin() {
     isAdmin = false;
     adminPanel.style.display = "none";
-    addLog("Выход", "Администратор вышел");
+    addLogToSupabase("Выход", "Администратор вышел");
 }
 
 // ========== МУЛЬТИЯЗЫЧНОСТЬ ==========
@@ -1242,7 +1222,7 @@ function switchTab(tabId) {
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 async function init() {
-    await loadDataFromFirestore();
+    await loadAllData();
     attachSortListeners();
 
     searchInput.addEventListener("input", () => { currentFilter = searchInput.value; renderTable(); });
@@ -1262,10 +1242,10 @@ async function init() {
         if (!newPass || newPass.length < 4) { passwordMessage.innerHTML = "Пароль должен быть не менее 4 символов"; return; }
         if (newPass !== confirm) { passwordMessage.innerHTML = "Пароли не совпадают"; return; }
         adminPassword = newPass;
-        await saveAdminPasswordToFirestore();
+        await saveAdminPasswordToSupabase();
         passwordMessage.innerHTML = "✅ Пароль успешно изменён!";
         setTimeout(() => passwordMessage.innerHTML = "", 2000);
-        addLog("Безопасность", "Пароль администратора изменён");
+        await addLogToSupabase("Безопасность", "Пароль администратора изменён");
     });
     registerBtn.addEventListener("click", registerNewPilot);
     if (saveRegSettingsBtn) {
@@ -1282,7 +1262,7 @@ async function init() {
     if (importCsvBtn) importCsvBtn.addEventListener("click", () => { if (importCsvFile.files[0]) importFromCSV(importCsvFile.files[0]); else csvMessage.innerText = "Выберите файл"; });
     if (saveLogoBtn) saveLogoBtn.addEventListener("click", saveCustomLogo);
     if (saveBgBtn) saveBgBtn.addEventListener("click", saveCustomBg);
-    if (clearLogsBtn) clearLogsBtn.addEventListener("click", () => { adminLogs = []; db.collection("adminLogs").doc("logs").set({ logs: [] }); renderLogs(); addLog("Очистка", "Логи удалены"); });
+    if (clearLogsBtn) clearLogsBtn.addEventListener("click", async () => { adminLogs = []; await supabase.from('admin_logs').delete().neq('id', 0); renderLogs(); await addLogToSupabase("Очистка", "Логи удалены"); });
     if (saveLapTimeBtn) saveLapTimeBtn.addEventListener("click", saveLapTime);
     if (importFromRHBtn) importFromRHBtn.addEventListener("click", importFromRotorHazard);
     if (importManualJsonBtn) importManualJsonBtn.addEventListener("click", importManualJson);
