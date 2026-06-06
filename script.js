@@ -79,6 +79,21 @@ const langRuBtn = document.getElementById("langRu");
 const langEnBtn = document.getElementById("langEn");
 const closeModalSpans = document.querySelectorAll(".close-modal");
 
+// RotorHazard элементы (засечка времени и импорт)
+const lapTimeModal = document.getElementById("lapTimeModal");
+const lapPilotNameSpan = document.getElementById("lapPilotName");
+const lapTimeValue = document.getElementById("lapTimeValue");
+const saveLapTimeBtn = document.getElementById("saveLapTimeBtn");
+const lapTimeMessage = document.getElementById("lapTimeMessage");
+let currentLapPilotId = null;
+
+const rhServerUrl = document.getElementById("rhServerUrl");
+const rhRaceId = document.getElementById("rhRaceId");
+const importFromRHBtn = document.getElementById("importFromRHBtn");
+const rhManualJson = document.getElementById("rhManualJson");
+const importManualJsonBtn = document.getElementById("importManualJsonBtn");
+const rhSyncMessage = document.getElementById("rhSyncMessage");
+
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 function escapeHtml(str) {
     if (str === null || str === undefined) return "";
@@ -238,7 +253,16 @@ function renderTable() {
         const rowClass = p.disqualified ? "disqualified-row" : "";
         const bestLapDisplay = (p.bestLap === null || p.bestLap === undefined) ? "—" : p.bestLap.toFixed(3) + " s";
         const pointsDisplay = (p.points === null || p.points === undefined) ? "—" : p.points;
-        const actionsHtml = isAdmin ? `<td><button class="edit-pilot-btn" data-id="${p.id}"><i class="fas fa-edit"></i></button> <button class="delete-pilot-btn" data-id="${p.id}"><i class="fas fa-trash-alt"></i></button></td>` : `<td></td>`;
+        let actionsHtml = "";
+        if (isAdmin) {
+            actionsHtml = `<td>
+                <button class="edit-pilot-btn" data-id="${p.id}"><i class="fas fa-edit"></i></button>
+                <button class="delete-pilot-btn" data-id="${p.id}"><i class="fas fa-trash-alt"></i></button>
+                <button class="lap-btn" data-id="${p.id}" data-name="${escapeHtml(p.name)}"><i class="fas fa-stopwatch"></i> Засечь</button>
+            </td>`;
+        } else {
+            actionsHtml = `<td></td>`;
+        }
         html += `<tr class="${rowClass}">
             <td class="pos-cell">${displayPos}</td>
             <td><span class="pilot-name"><i class="fas fa-drone"></i> ${escapeHtml(p.name)}</span></td>
@@ -252,15 +276,16 @@ function renderTable() {
     tbody.innerHTML = html;
     updateSortIndicators();
     document.querySelectorAll(".edit-pilot-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            startEditPilot(parseInt(btn.getAttribute("data-id")));
-        });
+        btn.addEventListener("click", (e) => { e.stopPropagation(); startEditPilot(parseInt(btn.getAttribute("data-id"))); });
     });
     document.querySelectorAll(".delete-pilot-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => { e.stopPropagation(); if(confirm("Удалить пилота?")) deletePilotById(parseInt(btn.getAttribute("data-id"))); });
+    });
+    document.querySelectorAll(".lap-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (confirm("Удалить пилота?")) deletePilotById(parseInt(btn.getAttribute("data-id")));
+            const id = parseInt(btn.getAttribute("data-id"));
+            const name = btn.getAttribute("data-name");
+            openLapModal(id, name);
         });
     });
 }
@@ -429,7 +454,7 @@ function randomizeHeats() {
     alert("Жеребьёвка выполнена!");
 }
 
-// ========== ПЛЕЙ-ОФФ (ТУРНИРНАЯ СЕТКА) ==========
+// ========== ПЛЕЙ-ОФФ ==========
 function renderPlayoff() {
     const container = document.getElementById("playoffBracket");
     if (!container) return;
@@ -906,6 +931,116 @@ function saveCustomBg() {
     addLog("Оформление", `Фоновое изображение изменено`);
 }
 
+// ========== ROTORHAZARD: ЗАСЕЧКА ВРЕМЕНИ И ИМПОРТ ==========
+function openLapModal(pilotId, pilotName) {
+    currentLapPilotId = pilotId;
+    lapPilotNameSpan.innerText = pilotName;
+    lapTimeValue.value = "";
+    lapTimeMessage.innerHTML = "";
+    lapTimeModal.style.display = "flex";
+}
+
+function saveLapTime() {
+    const time = parseFloat(lapTimeValue.value);
+    if (isNaN(time) || time <= 0) {
+        lapTimeMessage.innerHTML = "❌ Введите корректное положительное время (секунды)";
+        return;
+    }
+    const pilot = pilotsData.find(p => p.id === currentLapPilotId);
+    if (!pilot) return;
+    const oldBest = pilot.bestLap;
+    if (oldBest === null || time < oldBest) {
+        pilot.bestLap = time;
+        saveDataToLocalStorage();
+        renderTable();
+        updateTop3();
+        renderPlayoff();
+        addLog("Засечка времени", `${pilot.name} – новый лучший круг: ${time.toFixed(3)}с (предыдущий: ${oldBest !== null ? oldBest.toFixed(3) : "—"})`);
+        lapTimeMessage.innerHTML = "✅ Время сохранено!";
+        setTimeout(() => lapTimeModal.style.display = "none", 1000);
+    } else {
+        lapTimeMessage.innerHTML = `⚠️ Время ${time.toFixed(3)}с не улучшает рекорд (текущий лучший: ${oldBest.toFixed(3)}с). Не сохранено.`;
+    }
+}
+
+async function importFromRotorHazard() {
+    const url = rhServerUrl.value.trim();
+    const raceId = rhRaceId.value.trim();
+    if (!url || !raceId) {
+        rhSyncMessage.innerHTML = "❌ Укажите URL сервера и ID гонки";
+        return;
+    }
+    rhSyncMessage.innerHTML = "⏳ Загрузка данных...";
+    try {
+        const response = await fetch(`${url}/api/race/${raceId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        let pilotsArray = null;
+        if (Array.isArray(data)) pilotsArray = data;
+        else if (data.pilots && Array.isArray(data.pilots)) pilotsArray = data.pilots;
+        else throw new Error("Неизвестный формат ответа. Используйте ручной ввод JSON.");
+        let updated = 0;
+        for (const item of pilotsArray) {
+            const pilotName = item.name || item.pilot_name || item.callsign;
+            const bestLap = item.best_lap || item.fastest_lap || item.bestLap;
+            if (pilotName && bestLap) {
+                const pilot = pilotsData.find(p => p.name.toLowerCase() === pilotName.toLowerCase());
+                if (pilot) {
+                    if (pilot.bestLap === null || bestLap < pilot.bestLap) {
+                        pilot.bestLap = bestLap;
+                        updated++;
+                        addLog("RotorHazard импорт", `${pilot.name} – лучший круг обновлён до ${bestLap.toFixed(3)}с`);
+                    }
+                }
+            }
+        }
+        saveDataToLocalStorage();
+        renderTable();
+        updateTop3();
+        renderPlayoff();
+        rhSyncMessage.innerHTML = `✅ Импорт завершён. Обновлено пилотов: ${updated}`;
+    } catch (err) {
+        rhSyncMessage.innerHTML = `❌ Ошибка: ${err.message}. Попробуйте ручной ввод JSON.`;
+    }
+}
+
+function importManualJson() {
+    const jsonText = rhManualJson.value.trim();
+    if (!jsonText) {
+        rhSyncMessage.innerHTML = "❌ Вставьте JSON данные";
+        return;
+    }
+    try {
+        const data = JSON.parse(jsonText);
+        let pilotsArray = null;
+        if (Array.isArray(data)) pilotsArray = data;
+        else if (data.pilots && Array.isArray(data.pilots)) pilotsArray = data.pilots;
+        else throw new Error("Массив не найден в JSON");
+        let updated = 0;
+        for (const item of pilotsArray) {
+            const pilotName = item.name || item.pilot_name || item.callsign;
+            const bestLap = item.best_lap || item.fastest_lap || item.bestLap;
+            if (pilotName && bestLap) {
+                const pilot = pilotsData.find(p => p.name.toLowerCase() === pilotName.toLowerCase());
+                if (pilot) {
+                    if (pilot.bestLap === null || bestLap < pilot.bestLap) {
+                        pilot.bestLap = bestLap;
+                        updated++;
+                        addLog("RotorHazard ручной импорт", `${pilot.name} – новый лучший круг ${bestLap.toFixed(3)}с`);
+                    }
+                }
+            }
+        }
+        saveDataToLocalStorage();
+        renderTable();
+        updateTop3();
+        renderPlayoff();
+        rhSyncMessage.innerHTML = `✅ Импорт из JSON завершён. Обновлено пилотов: ${updated}`;
+    } catch (err) {
+        rhSyncMessage.innerHTML = `❌ Ошибка парсинга JSON: ${err.message}`;
+    }
+}
+
 // ========== АДМИН ВХОД/ВЫХОД ==========
 function showAdminModal() { adminModal.style.display = "flex"; adminPasswordInput.value = ""; adminErrorSpan.innerText = ""; }
 function closeAdminModal() { adminModal.style.display = "none"; }
@@ -1024,7 +1159,7 @@ function init() {
     resetBtn.addEventListener("click", () => { searchInput.value = ""; currentFilter = ""; renderTable(); });
     adminLoginBtn.addEventListener("click", showAdminModal);
     closeModalSpans.forEach(span => span.addEventListener("click", function() { this.closest(".modal").style.display = "none"; }));
-    window.addEventListener("click", (e) => { if (e.target === adminModal) closeAdminModal(); });
+    window.addEventListener("click", (e) => { if (e.target === adminModal) closeAdminModal(); if (e.target === lapTimeModal) lapTimeModal.style.display = "none"; });
     submitAdminPass.addEventListener("click", loginAdmin);
     logoutAdminBtn.addEventListener("click", logoutAdmin);
     addPilotBtn.addEventListener("click", addOrUpdatePilot);
@@ -1058,6 +1193,10 @@ function init() {
     if (saveLogoBtn) saveLogoBtn.addEventListener("click", saveCustomLogo);
     if (saveBgBtn) saveBgBtn.addEventListener("click", saveCustomBg);
     if (clearLogsBtn) clearLogsBtn.addEventListener("click", () => { adminLogs = []; localStorage.setItem("adminLogs", "[]"); renderLogs(); addLog("Очистка", "Логи удалены"); });
+    if (saveLapTimeBtn) saveLapTimeBtn.addEventListener("click", saveLapTime);
+    if (importFromRHBtn) importFromRHBtn.addEventListener("click", importFromRotorHazard);
+    if (importManualJsonBtn) importManualJsonBtn.addEventListener("click", importManualJson);
+
     const tabBtnsAll = document.querySelectorAll(".tab-btn");
     tabBtnsAll.forEach(btn => {
         btn.addEventListener("click", () => { switchTab(btn.getAttribute("data-tab")); });
