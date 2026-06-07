@@ -1,8 +1,6 @@
-// ========== КОНФИГУРАЦИЯ SUPABASE ==========
+// ========== КОНФИГУРАЦИЯ SUPABASE (без конфликта имён) ==========
 const SUPABASE_URL = "https://rzhsrtxdxcaxvowsobgl.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6aHNydHhkeGNheHZvd3NvYmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjkxMjEsImV4cCI6MjA5NjQwNTEyMX0.sz3PdejgEt8wCGaJjqk4hPZcl1w0UAELtHm6I3EFXbU";
-
-// Используем глобальный объект supabase (загружен через SDK) и создаём клиент с другим именем
 const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
@@ -25,7 +23,7 @@ let regCheckInterval = null;
 let regTimerInterval = null;
 let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
 
-// DOM элементы (все, как в index.html)
+// DOM элементы (идентичны вашему HTML)
 const tbody = document.getElementById("tableBody");
 const searchInput = document.getElementById("searchInput");
 const resetBtn = document.getElementById("resetSearchBtn");
