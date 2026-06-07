@@ -1,7 +1,6 @@
 // ========== КОНФИГУРАЦИЯ SUPABASE ==========
 const SUPABASE_URL = "https://rzhsrtxdxcaxvowsobgl.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6aHNydHhkeGNheHZvd3NvYmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjkxMjEsImV4cCI6MjA5NjQwNTEyMX0.sz3PdejgEt8wCGaJjqk4hPZcl1w0UAELtHm6I3EFXbU";
-// Используем глобальный объект supabase (уже загружен через SDK) и создаём клиент с другим именем
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
@@ -24,7 +23,7 @@ let regCheckInterval = null;
 let regTimerInterval = null;
 let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
 
-// DOM элементы (все, как у вас)
+// DOM элементы (все, как в index.html)
 const tbody = document.getElementById("tableBody");
 const searchInput = document.getElementById("searchInput");
 const resetBtn = document.getElementById("resetSearchBtn");
@@ -112,7 +111,7 @@ function addLog(action, details) {
     const log = { timestamp: new Date().toLocaleString(), action, details };
     adminLogs.unshift(log);
     if (adminLogs.length > 200) adminLogs.pop();
-    sbClient.from('admin_logs').insert(log).then();
+    sbClient.from('admin_logs').insert(log).catch(e => console.error("Log insert error:", e));
     if (isAdmin) renderLogs();
 }
 
@@ -120,7 +119,7 @@ function addDisqualHistory(pilotName, reason, actionType) {
     const record = { date: new Date().toLocaleString(), pilotName, reason, actionType };
     disqualHistory.unshift(record);
     if (disqualHistory.length > 200) disqualHistory.pop();
-    sbClient.from('disqual_history').insert(record).then();
+    sbClient.from('disqual_history').insert(record).catch(e => console.error("Disqual history insert error:", e));
     if (isAdmin) renderDisqualHistory();
 }
 
