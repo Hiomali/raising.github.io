@@ -1,4 +1,4 @@
-// ========== SUPABASE КОНФИГУРАЦИЯ ==========
+// ========== КОНФИГУРАЦИЯ SUPABASE ==========
 const SUPABASE_URL = "https://ggfpgupwjqusuizumfkz.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdnZnBndXB3anF1c3VpenVtZmt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3Mzg0NDgsImV4cCI6MjA5NjMxNDQ0OH0.jCzBwIdt5ZNWhyvVIwe6MN4rirEFJGTXHnWqq7YQcBA";
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -89,7 +89,6 @@ const lapTimeValue = document.getElementById("lapTimeValue");
 const saveLapTimeBtn = document.getElementById("saveLapTimeBtn");
 const lapTimeMessage = document.getElementById("lapTimeMessage");
 let currentLapPilotId = null;
-
 const rhServerUrl = document.getElementById("rhServerUrl");
 const rhRaceId = document.getElementById("rhRaceId");
 const importFromRHBtn = document.getElementById("importFromRHBtn");
@@ -108,10 +107,10 @@ function escapeHtml(str) {
     });
 }
 
-// ========== ЗАГРУЗКА И СОХРАНЕНИЕ В SUPABASE ==========
+// ========== ЗАГРУЗКА ДАННЫХ ИЗ SUPABASE ==========
 async function loadAllData() {
     try {
-        // 1. Пилоты
+        // Пилоты
         const { data: pilots, error: pilotsErr } = await supabase.from('pilots').select('*');
         if (pilotsErr) throw pilotsErr;
         if (pilots && pilots.length) {
@@ -121,7 +120,6 @@ async function loadAllData() {
                 points: p.points === undefined ? null : p.points
             }));
         } else {
-            // начальные данные
             pilotsData = [
                 { id: Date.now()+1, name: "Max Velocity", countryCode: "🇺🇸", countryName: "USA", bestLap: 42.687, points: 285, disqualified: false, disqualificationReason: "" },
                 { id: Date.now()+2, name: "Sara Storm", countryCode: "🇬🇧", countryName: "UK", bestLap: 43.124, points: 272, disqualified: false, disqualificationReason: "" },
@@ -134,10 +132,10 @@ async function loadAllData() {
                 { id: Date.now()+9, name: "Rocket Blade", countryCode: "🇧🇷", countryName: "Brazil", bestLap: 42.990, points: 263, disqualified: false, disqualificationReason: "" },
                 { id: Date.now()+10, name: "Sky Sphinx", countryCode: "🇿🇦", countryName: "South Africa", bestLap: 45.203, points: 230, disqualified: false, disqualificationReason: "" }
             ];
-            await savePilotsToSupabase();
+            await supabase.from('pilots').upsert(pilotsData, { onConflict: 'id' });
         }
 
-        // 2. heatsMap
+        // Heats
         const { data: heats, error: heatsErr } = await supabase.from('heats').select('*');
         if (heatsErr) throw heatsErr;
         if (heats && heats.length) {
@@ -146,10 +144,11 @@ async function loadAllData() {
         } else {
             heatsMap = {};
             pilotsData.forEach(p => { heatsMap[p.id] = 0; });
-            await saveHeatsToSupabase();
+            const heatsArray = Object.entries(heatsMap).map(([pilot_id, heat_number]) => ({ pilot_id: parseInt(pilot_id), heat_number }));
+            await supabase.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
         }
 
-        // 3. regSettings
+        // Настройки регистрации
         const { data: reg, error: regErr } = await supabase.from('reg_settings').select('*').eq('id', 1).maybeSingle();
         if (regErr) throw regErr;
         if (reg) regSettings = reg;
@@ -158,26 +157,26 @@ async function loadAllData() {
             await supabase.from('reg_settings').upsert(regSettings);
         }
 
-        // 4. adminLogs
+        // Логи
         const { data: logs, error: logsErr } = await supabase.from('admin_logs').select('*').order('id', { ascending: false }).limit(200);
         if (logsErr) throw logsErr;
         adminLogs = logs || [];
 
-        // 5. disqualHistory
+        // История дисквалификаций
         const { data: discHist, error: discErr } = await supabase.from('disqual_history').select('*').order('id', { ascending: false }).limit(200);
         if (discErr) throw discErr;
         disqualHistory = discHist || [];
 
-        // 6. pointsHistory
+        // История очков
         const { data: pointsHist, error: pointsErr } = await supabase.from('points_history').select('*').order('id', { ascending: true });
         if (pointsErr) throw pointsErr;
         if (pointsHist && pointsHist.length) {
             pointsHistory = pointsHist.map(h => ({ date: h.date, points: h.points }));
         } else {
-            capturePointsHistory();
+            await capturePointsHistory();
         }
 
-        // 7. customData
+        // Кастомизация
         const { data: custom, error: customErr } = await supabase.from('custom_data').select('*').eq('id', 1).maybeSingle();
         if (customErr) throw customErr;
         if (custom) {
@@ -186,16 +185,16 @@ async function loadAllData() {
         } else {
             await supabase.from('custom_data').insert({ id: 1, customLogo, customBg });
         }
-        document.getElementById("customLogo").innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
+        const customLogoElem = document.getElementById("customLogo");
+        if (customLogoElem) customLogoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
         if (customBg) document.body.style.backgroundImage = `url(${customBg})`;
 
-        // 8. adminPassword
+        // Пароль администратора
         const { data: pass, error: passErr } = await supabase.from('admin_password').select('*').eq('id', 1).maybeSingle();
         if (passErr) throw passErr;
         if (pass) adminPassword = pass.value;
         else await supabase.from('admin_password').insert({ id: 1, value: adminPassword });
 
-        // применить загруженные данные
         renderTable();
         renderHeatsList();
         updateTop3();
@@ -217,22 +216,20 @@ async function loadAllData() {
     }
 }
 
+// ========== СОХРАНЕНИЕ В SUPABASE ==========
 async function savePilotsToSupabase() {
     const { error } = await supabase.from('pilots').upsert(pilotsData, { onConflict: 'id' });
     if (error) console.error("Ошибка сохранения пилотов:", error);
 }
-
 async function saveHeatsToSupabase() {
     const heatsArray = Object.entries(heatsMap).map(([pilot_id, heat_number]) => ({ pilot_id: parseInt(pilot_id), heat_number }));
     const { error } = await supabase.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
     if (error) console.error("Ошибка сохранения залётов:", error);
 }
-
 async function saveRegSettingsToSupabase() {
     const { error } = await supabase.from('reg_settings').upsert({ id: 1, ...regSettings });
     if (error) console.error("Ошибка сохранения настроек регистрации:", error);
 }
-
 async function addLogToSupabase(action, details) {
     const log = { timestamp: new Date().toLocaleString(), action, details };
     const { error } = await supabase.from('admin_logs').insert(log);
@@ -241,7 +238,6 @@ async function addLogToSupabase(action, details) {
     if (adminLogs.length > 200) adminLogs.pop();
     if (isAdmin) renderLogs();
 }
-
 async function addDisqualHistoryToSupabase(pilotName, reason, actionType) {
     const record = { date: new Date().toLocaleString(), pilotName, reason, actionType };
     const { error } = await supabase.from('disqual_history').insert(record);
@@ -250,7 +246,6 @@ async function addDisqualHistoryToSupabase(pilotName, reason, actionType) {
     if (disqualHistory.length > 200) disqualHistory.pop();
     if (isAdmin) renderDisqualHistory();
 }
-
 async function capturePointsHistory() {
     const now = new Date().toLocaleDateString();
     const top5 = [...pilotsData].sort((a,b) => (b.points||0) - (a.points||0)).slice(0,5);
@@ -262,16 +257,18 @@ async function capturePointsHistory() {
     if (pointsHistory.length > 10) pointsHistory.shift();
     updateChart();
 }
-
 async function saveCustomToSupabase() {
     const { error } = await supabase.from('custom_data').upsert({ id: 1, customLogo, customBg });
     if (error) console.error("Ошибка сохранения кастомизации:", error);
 }
-
 async function saveAdminPasswordToSupabase() {
     const { error } = await supabase.from('admin_password').upsert({ id: 1, value: adminPassword });
     if (error) console.error("Ошибка сохранения пароля:", error);
 }
+
+// ========== ЛОГИРОВАНИЕ (ОБЁРТКИ) ==========
+function addLog(action, details) { addLogToSupabase(action, details); }
+function addDisqualHistory(pilotName, reason, actionType) { addDisqualHistoryToSupabase(pilotName, reason, actionType); }
 
 // ========== ОСНОВНАЯ ТАБЛИЦА ==========
 function filterAndSortData() {
@@ -300,7 +297,6 @@ function filterAndSortData() {
     });
     return filtered;
 }
-
 function updateSortIndicators() {
     document.querySelectorAll("#racingTable th[data-sort]").forEach(th => {
         const col = th.getAttribute("data-sort");
@@ -315,7 +311,6 @@ function updateSortIndicators() {
         }
     });
 }
-
 function renderTable() {
     const allSorted = filterAndSortData();
     const activePilots = allSorted.filter(p => !p.disqualified);
@@ -388,21 +383,20 @@ function updateTop3() {
         </div>
     `).join("");
 }
-
 function updateChart() {
     const ctx = document.getElementById("pointsChart");
     if (!ctx) return;
     const labels = pointsHistory.map(h => h.date);
     const datasets = [];
     for (let i = 0; i < 5; i++) {
-        const data = pointsHistory.map(h => (Array.isArray(h.points) ? h.points[i] : 0) || 0);
+        const data = pointsHistory.map(h => h.points[i] || 0);
         datasets.push({ label: `Пилот ${i+1}`, data, borderColor: `hsl(${i*60}, 70%, 60%)`, fill: false, tension: 0.1 });
     }
     if (chart) chart.destroy();
     chart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { responsive: true, maintainAspectRatio: true } });
 }
 
-// ========== ЗАЛЁТЫ (ОГРАНИЧЕНИЕ 4) ==========
+// ========== ЗАЛЁТЫ ==========
 function getHeatCounts() {
     const counts = {1:0,2:0,3:0,4:0,5:0,6:0};
     pilotsData.forEach(pilot => {
@@ -412,14 +406,12 @@ function getHeatCounts() {
     });
     return counts;
 }
-
 function isHeatAvailable(heatNumber, excludePilotId = null) {
     const counts = getHeatCounts();
     let currentCount = counts[heatNumber] || 0;
     if (excludePilotId !== null && heatsMap[excludePilotId] === heatNumber) currentCount--;
     return currentCount < 4;
 }
-
 function getAvailableHeats(excludePilotId = null) {
     const available = [];
     for (let i = 1; i <= 6; i++) {
@@ -427,7 +419,6 @@ function getAvailableHeats(excludePilotId = null) {
     }
     return available;
 }
-
 function renderHeatsList() {
     if (!heatsListDiv) return;
     const groups = {};
@@ -454,7 +445,6 @@ function renderHeatsList() {
     }
     heatsListDiv.innerHTML = html;
 }
-
 function renderHeatsAssignment() {
     if (!heatsAssignmentDiv) return;
     let html = `<div style="font-weight:bold; margin-bottom:8px;">Выберите номер залёта для каждого пилота (0 – не участвует, максимум 4 пилота на залёт)</div>`;
@@ -495,7 +485,6 @@ function renderHeatsAssignment() {
         });
     });
 }
-
 async function saveHeatsDistribution() {
     const counts = getHeatCounts();
     let overflow = false;
@@ -511,9 +500,8 @@ async function saveHeatsDistribution() {
     renderHeatsList();
     formMessage.innerHTML = "✅ Распределение по залётам сохранено!";
     setTimeout(() => { if(formMessage) formMessage.innerHTML = ""; }, 2000);
-    addLogToSupabase("Залёты", "Распределение сохранено");
+    addLog("Залёты", "Распределение сохранено");
 }
-
 async function randomizeHeats() {
     const active = pilotsData.filter(p => !p.disqualified);
     const heats = [[],[],[],[],[],[]];
@@ -532,11 +520,9 @@ async function randomizeHeats() {
     await saveHeatsToSupabase();
     renderHeatsList();
     if (isAdmin) renderHeatsAssignment();
-    addLogToSupabase("Жеребьёвка", "Случайное распределение по залётам");
+    addLog("Жеребьёвка", "Случайное распределение по залётам");
     alert("Жеребьёвка выполнена!");
 }
-
-// ========== ПЛЕЙ-ОФФ ==========
 function renderPlayoff() {
     const container = document.getElementById("playoffBracket");
     if (!container) return;
@@ -603,8 +589,7 @@ function renderAdminList() {
         btn.addEventListener("click", (e) => { e.stopPropagation(); if(confirm("Удалить пилота?")) deletePilotById(parseInt(btn.getAttribute("data-id"))); });
     });
 }
-
-function startEditPilot(id){
+function startEditPilot(id) {
     const p = pilotsData.find(p => p.id === id);
     if (!p) return;
     editingPilotId = id;
@@ -617,16 +602,14 @@ function startEditPilot(id){
     cancelEditBtn.style.display = "inline-block";
     formMessage.innerHTML = "Редактирование: " + p.name;
 }
-
-function cancelEdit(){
+function cancelEdit() {
     editingPilotId = null;
     addPilotBtn.innerHTML = '<i class="fas fa-save"></i> Добавить';
     cancelEditBtn.style.display = "none";
     editName.value = editCountryCode.value = editCountryName.value = editBestLap.value = editPoints.value = "";
     formMessage.innerHTML = "";
 }
-
-async function addOrUpdatePilot(){
+async function addOrUpdatePilot() {
     const name = editName.value.trim();
     const cc = editCountryCode.value.trim();
     const cn = editCountryName.value.trim();
@@ -635,12 +618,12 @@ async function addOrUpdatePilot(){
     if (!name || !cc || !cn) { formMessage.innerHTML = "❌ Заполните имя, эмодзи и страну!"; return; }
     if (lap !== null && isNaN(lap)) { formMessage.innerHTML = "❌ Лучший круг должен быть числом (или оставьте пустым)"; return; }
     if (pts !== null && isNaN(pts)) { formMessage.innerHTML = "❌ Очки должны быть числом (или оставьте пустым)"; return; }
-    if (editingPilotId !== null){
+    if (editingPilotId !== null) {
         const idx = pilotsData.findIndex(p => p.id === editingPilotId);
-        if (idx !== -1){
+        if (idx !== -1) {
             pilotsData[idx] = { ...pilotsData[idx], name, countryCode: cc, countryName: cn, bestLap: lap, points: pts };
             formMessage.innerHTML = "✅ Пилот обновлён";
-            await addLogToSupabase("Редактирование", `Пилот ${name} обновлён`);
+            addLog("Редактирование", `Пилот ${name} обновлён`);
         }
         editingPilotId = null;
     } else {
@@ -648,7 +631,7 @@ async function addOrUpdatePilot(){
         pilotsData.push({ id: newId, name, countryCode: cc, countryName: cn, bestLap: lap, points: pts, disqualified: false, disqualificationReason: "" });
         heatsMap[newId] = 0;
         formMessage.innerHTML = "✅ Пилот добавлен";
-        await addLogToSupabase("Добавление", `Новый пилот ${name}`);
+        addLog("Добавление", `Новый пилот ${name}`);
     }
     await savePilotsToSupabase();
     await saveHeatsToSupabase();
@@ -659,10 +642,9 @@ async function addOrUpdatePilot(){
     if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
     renderHeatsList();
 }
-
-async function deletePilotById(id){
+async function deletePilotById(id) {
     const pilot = pilotsData.find(p => p.id === id);
-    if (pilot) await addLogToSupabase("Удаление", `Пилот ${pilot.name} удалён`);
+    if (pilot) addLog("Удаление", `Пилот ${pilot.name} удалён`);
     pilotsData = pilotsData.filter(p => p.id !== id);
     delete heatsMap[id];
     await savePilotsToSupabase();
@@ -683,7 +665,6 @@ function openLapModal(pilotId, pilotName) {
     lapTimeMessage.innerHTML = "";
     lapTimeModal.style.display = "flex";
 }
-
 async function saveLapTime() {
     const time = parseFloat(lapTimeValue.value);
     if (isNaN(time) || time <= 0) {
@@ -699,7 +680,7 @@ async function saveLapTime() {
         renderTable();
         updateTop3();
         renderPlayoff();
-        await addLogToSupabase("Засечка времени", `${pilot.name} – новый лучший круг: ${time.toFixed(3)}с (предыдущий: ${oldBest !== null ? oldBest.toFixed(3) : "—"})`);
+        addLog("Засечка времени", `${pilot.name} – новый лучший круг: ${time.toFixed(3)}с (предыдущий: ${oldBest !== null ? oldBest.toFixed(3) : "—"})`);
         lapTimeMessage.innerHTML = "✅ Время сохранено!";
         setTimeout(() => lapTimeModal.style.display = "none", 1000);
     } else {
@@ -734,7 +715,7 @@ async function importFromRotorHazard() {
                     if (pilot.bestLap === null || bestLap < pilot.bestLap) {
                         pilot.bestLap = bestLap;
                         updated++;
-                        await addLogToSupabase("RotorHazard импорт", `${pilot.name} – лучший круг обновлён до ${bestLap.toFixed(3)}с`);
+                        addLog("RotorHazard импорт", `${pilot.name} – лучший круг обновлён до ${bestLap.toFixed(3)}с`);
                     }
                 }
             }
@@ -748,8 +729,7 @@ async function importFromRotorHazard() {
         rhSyncMessage.innerHTML = `❌ Ошибка: ${err.message}. Попробуйте ручной ввод JSON.`;
     }
 }
-
-async function importManualJson() {
+function importManualJson() {
     const jsonText = rhManualJson.value.trim();
     if (!jsonText) {
         rhSyncMessage.innerHTML = "❌ Вставьте JSON данные";
@@ -771,12 +751,12 @@ async function importManualJson() {
                     if (pilot.bestLap === null || bestLap < pilot.bestLap) {
                         pilot.bestLap = bestLap;
                         updated++;
-                        await addLogToSupabase("RotorHazard ручной импорт", `${pilot.name} – новый лучший круг ${bestLap.toFixed(3)}с`);
+                        addLog("RotorHazard ручной импорт", `${pilot.name} – новый лучший круг ${bestLap.toFixed(3)}с`);
                     }
                 }
             }
         }
-        await savePilotsToSupabase();
+        savePilotsToSupabase();
         renderTable();
         updateTop3();
         renderPlayoff();
@@ -824,10 +804,9 @@ function renderDisqualList() {
         });
     });
 }
-
-async function disqualifyPilot(id, reason){
+async function disqualifyPilot(id, reason) {
     const pilot = pilotsData.find(p => p.id === id);
-    if (pilot && !pilot.disqualified){
+    if (pilot && !pilot.disqualified) {
         pilot.disqualified = true;
         pilot.disqualificationReason = reason;
         await savePilotsToSupabase();
@@ -837,15 +816,14 @@ async function disqualifyPilot(id, reason){
         updateTop3();
         renderPlayoff();
         if (isAdmin) { renderAdminList(); renderHeatsAssignment(); }
-        await addLogToSupabase("Дисквалификация", `${pilot.name} - ${reason}`);
-        await addDisqualHistoryToSupabase(pilot.name, reason, "дисквалифицирован");
+        addLog("Дисквалификация", `${pilot.name} - ${reason}`);
+        addDisqualHistory(pilot.name, reason, "дисквалифицирован");
         formMessage.innerHTML = `⛔ ${pilot.name} дисквалифицирован. Причина: ${reason}`;
     }
 }
-
-async function restorePilot(id){
+async function restorePilot(id) {
     const pilot = pilotsData.find(p => p.id === id);
-    if (pilot && pilot.disqualified){
+    if (pilot && pilot.disqualified) {
         pilot.disqualified = false;
         pilot.disqualificationReason = "";
         await savePilotsToSupabase();
@@ -855,12 +833,11 @@ async function restorePilot(id){
         updateTop3();
         renderPlayoff();
         if (isAdmin) { renderAdminList(); renderHeatsAssignment(); }
-        await addLogToSupabase("Восстановление", `${pilot.name} восстановлен`);
-        await addDisqualHistoryToSupabase(pilot.name, "", "восстановлен");
+        addLog("Восстановление", `${pilot.name} восстановлен`);
+        addDisqualHistory(pilot.name, "", "восстановлен");
         formMessage.innerHTML = `✅ ${pilot.name} восстановлен.`;
     }
 }
-
 function renderDisqualHistory() {
     if (!disqualHistoryDiv) return;
     if (disqualHistory.length === 0) {
@@ -873,7 +850,6 @@ function renderDisqualHistory() {
         </div>
     `).join("");
 }
-
 function renderLogs() {
     if (!adminLogsDiv) return;
     if (adminLogs.length === 0) {
@@ -899,22 +875,19 @@ function loadRegSettingsToUI() {
     updateRegistrationUI();
     startTimerDisplay();
 }
-
-function saveRegSettingsToStorage() {
-    saveRegSettingsToSupabase();
+async function saveRegSettingsToStorage() {
+    await saveRegSettingsToSupabase();
     updateRegistrationUI();
     startTimerDisplay();
     if (isAdmin && regSettingsMessage) {
         regSettingsMessage.innerHTML = "✅ Настройки сохранены";
         setTimeout(() => { if (regSettingsMessage) regSettingsMessage.innerHTML = ""; }, 2000);
     }
-    addLogToSupabase("Регистрация", `Настройки обновлены: enabled=${regSettings.enabled}, useTimer=${regSettings.useTimer}`);
+    addLog("Регистрация", `Настройки обновлены: enabled=${regSettings.enabled}, useTimer=${regSettings.useTimer}`);
 }
-
 function toggleTimerFields(show) {
     if (timerFieldsDiv) timerFieldsDiv.style.display = show ? "flex" : "none";
 }
-
 function isRegistrationOpen() {
     if (!regSettings.enabled) return false;
     if (!regSettings.useTimer) return true;
@@ -926,7 +899,6 @@ function isRegistrationOpen() {
     if (!open && close) return now <= close;
     return true;
 }
-
 function updateRegistrationUI() {
     const registerSection = document.getElementById("registerSection");
     const closedMsgDiv = document.getElementById("registrationClosedMsg");
@@ -957,12 +929,10 @@ function updateRegistrationUI() {
         }
     }
 }
-
 function startRegistrationWatcher() {
     if (regCheckInterval) clearInterval(regCheckInterval);
     regCheckInterval = setInterval(() => { updateRegistrationUI(); }, 60000);
 }
-
 function startTimerDisplay() {
     if (regTimerInterval) clearInterval(regTimerInterval);
     function updateTimer() {
@@ -986,8 +956,6 @@ function startTimerDisplay() {
     updateTimer();
     regTimerInterval = setInterval(updateTimer, 1000);
 }
-
-// ========== РЕГИСТРАЦИЯ НОВОГО ПИЛОТА ==========
 async function registerNewPilot() {
     if (!isRegistrationOpen()) {
         regMessage.innerHTML = "❌ Регистрация в данный момент закрыта";
@@ -1036,10 +1004,10 @@ async function registerNewPilot() {
     updateTop3();
     renderPlayoff();
     if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
-    await addLogToSupabase("Регистрация", `Новая команда: ${name}`);
+    addLog("Регистрация", `Новая команда: ${name}`);
 }
 
-// ========== CSV ==========
+// ========== CSV ЭКСПОРТ/ИМПОРТ ==========
 function exportToCSV() {
     const csvRows = [["id","name","countryCode","countryName","bestLap","points","disqualified","disqualificationReason"]];
     for (let p of pilotsData) {
@@ -1051,9 +1019,8 @@ function exportToCSV() {
     a.href = URL.createObjectURL(blob);
     a.download = "pilots.csv";
     a.click();
-    addLogToSupabase("Экспорт", "CSV выгружен");
+    addLog("Экспорт", "CSV выгружен");
 }
-
 async function importFromCSV(file) {
     const reader = new FileReader();
     reader.onload = async function(e) {
@@ -1086,7 +1053,7 @@ async function importFromCSV(file) {
             renderPlayoff();
             if (isAdmin) { renderAdminList(); renderDisqualList(); renderHeatsAssignment(); }
             csvMessage.innerHTML = `✅ Импортировано ${newPilots.length} пилотов`;
-            await addLogToSupabase("Импорт", `CSV импортирован, ${newPilots.length} записей`);
+            addLog("Импорт", `CSV импортирован, ${newPilots.length} записей`);
         } else {
             csvMessage.innerHTML = "❌ Не найдено валидных данных в CSV";
         }
@@ -1104,10 +1071,9 @@ async function saveCustomLogo() {
         if (logoElem) logoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
         customizeMsg.innerHTML = "Логотип сохранён";
         setTimeout(() => customizeMsg.innerHTML = "", 2000);
-        await addLogToSupabase("Оформление", `Логотип изменён на ${customLogo}`);
+        addLog("Оформление", `Логотип изменён на ${customLogo}`);
     }
 }
-
 async function saveCustomBg() {
     const bgUrl = customBgUrl.value.trim();
     customBg = bgUrl;
@@ -1115,7 +1081,7 @@ async function saveCustomBg() {
     document.body.style.backgroundImage = bgUrl ? `url(${bgUrl})` : "";
     customizeMsg.innerHTML = "Фон применён";
     setTimeout(() => customizeMsg.innerHTML = "", 2000);
-    await addLogToSupabase("Оформление", `Фоновое изображение изменено`);
+    addLog("Оформление", `Фоновое изображение изменено`);
 }
 
 // ========== АДМИН ВХОД/ВЫХОД ==========
@@ -1131,7 +1097,7 @@ function loginAdmin() {
         renderHeatsAssignment();
         renderLogs();
         renderDisqualHistory();
-        addLogToSupabase("Вход", "Администратор вошёл в панель");
+        addLog("Вход", "Администратор вошёл в панель");
     } else {
         adminErrorSpan.innerText = "Неверный пароль!";
     }
@@ -1139,7 +1105,7 @@ function loginAdmin() {
 function logoutAdmin() {
     isAdmin = false;
     adminPanel.style.display = "none";
-    addLogToSupabase("Выход", "Администратор вышел");
+    addLog("Выход", "Администратор вышел");
 }
 
 // ========== МУЛЬТИЯЗЫЧНОСТЬ ==========
@@ -1165,7 +1131,6 @@ const translations = {
         closedMsgText: "Registration is temporarily closed. Next opening:"
     }
 };
-
 function setLanguage(lang) {
     currentLang = lang;
     const t = translations[lang];
@@ -1245,7 +1210,7 @@ async function init() {
         await saveAdminPasswordToSupabase();
         passwordMessage.innerHTML = "✅ Пароль успешно изменён!";
         setTimeout(() => passwordMessage.innerHTML = "", 2000);
-        await addLogToSupabase("Безопасность", "Пароль администратора изменён");
+        addLog("Безопасность", "Пароль администратора изменён");
     });
     registerBtn.addEventListener("click", registerNewPilot);
     if (saveRegSettingsBtn) {
@@ -1262,7 +1227,7 @@ async function init() {
     if (importCsvBtn) importCsvBtn.addEventListener("click", () => { if (importCsvFile.files[0]) importFromCSV(importCsvFile.files[0]); else csvMessage.innerText = "Выберите файл"; });
     if (saveLogoBtn) saveLogoBtn.addEventListener("click", saveCustomLogo);
     if (saveBgBtn) saveBgBtn.addEventListener("click", saveCustomBg);
-    if (clearLogsBtn) clearLogsBtn.addEventListener("click", async () => { adminLogs = []; await supabase.from('admin_logs').delete().neq('id', 0); renderLogs(); await addLogToSupabase("Очистка", "Логи удалены"); });
+    if (clearLogsBtn) clearLogsBtn.addEventListener("click", async () => { adminLogs = []; await supabase.from('admin_logs').delete().neq('id', 0); renderLogs(); addLog("Очистка", "Логи удалены"); });
     if (saveLapTimeBtn) saveLapTimeBtn.addEventListener("click", saveLapTime);
     if (importFromRHBtn) importFromRHBtn.addEventListener("click", importFromRotorHazard);
     if (importManualJsonBtn) importManualJsonBtn.addEventListener("click", importManualJson);
