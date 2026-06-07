@@ -1,6 +1,6 @@
-// ========== КОНФИГУРАЦИЯ SUPABASE ==========
-const SUPABASE_URL = "https://ggfpgupwjqusuizumfkz.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdnZnBndXB3anF1c3VpenVtZmt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3Mzg0NDgsImV4cCI6MjA5NjMxNDQ0OH0.jCzBwIdt5ZNWhyvVIwe6MN4rirEFJGTXHnWqq7YQcBA";
+v// ========== КОНФИГУРАЦИЯ SUPABASE ==========
+const SUPABASE_URL = "https://rzhsrtxdxcaxvowsobgl.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6aHNydHhkeGNheHZvd3NvYmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjkxMjEsImV4cCI6MjA5NjQwNTEyMX0.sz3PdejgEt8wCGaJjqk4hPZcl1w0UAELtHm6I3EFXbU";
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
@@ -22,9 +22,6 @@ let chart = null;
 let regCheckInterval = null;
 let regTimerInterval = null;
 let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
-
-console.log("Скрипт запущен");
-alert("Скрипт работает");
 
 // DOM элементы
 const tbody = document.getElementById("tableBody");
@@ -110,6 +107,22 @@ function escapeHtml(str) {
     });
 }
 
+function addLog(action, details) {
+    const log = { timestamp: new Date().toLocaleString(), action, details };
+    adminLogs.unshift(log);
+    if (adminLogs.length > 200) adminLogs.pop();
+    supabase.from('admin_logs').insert(log).then();
+    if (isAdmin) renderLogs();
+}
+
+function addDisqualHistory(pilotName, reason, actionType) {
+    const record = { date: new Date().toLocaleString(), pilotName, reason, actionType };
+    disqualHistory.unshift(record);
+    if (disqualHistory.length > 200) disqualHistory.pop();
+    supabase.from('disqual_history').insert(record).then();
+    if (isAdmin) renderDisqualHistory();
+}
+
 // ========== ЗАГРУЗКА ДАННЫХ ИЗ SUPABASE ==========
 async function loadAllData() {
     try {
@@ -117,11 +130,7 @@ async function loadAllData() {
         const { data: pilots, error: pilotsErr } = await supabase.from('pilots').select('*');
         if (pilotsErr) throw pilotsErr;
         if (pilots && pilots.length) {
-            pilotsData = pilots.map(p => ({
-                ...p,
-                bestLap: p.bestLap === undefined ? null : p.bestLap,
-                points: p.points === undefined ? null : p.points
-            }));
+            pilotsData = pilots.map(p => ({ ...p, bestLap: p.bestLap ?? null, points: p.points ?? null }));
         } else {
             pilotsData = [
                 { id: Date.now()+1, name: "Max Velocity", countryCode: "🇺🇸", countryName: "USA", bestLap: 42.687, points: 285, disqualified: false, disqualificationReason: "" },
@@ -221,57 +230,31 @@ async function loadAllData() {
 
 // ========== СОХРАНЕНИЕ В SUPABASE ==========
 async function savePilotsToSupabase() {
-    const { error } = await supabase.from('pilots').upsert(pilotsData, { onConflict: 'id' });
-    if (error) console.error("Ошибка сохранения пилотов:", error);
+    await supabase.from('pilots').upsert(pilotsData, { onConflict: 'id' });
 }
 async function saveHeatsToSupabase() {
     const heatsArray = Object.entries(heatsMap).map(([pilot_id, heat_number]) => ({ pilot_id: parseInt(pilot_id), heat_number }));
-    const { error } = await supabase.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
-    if (error) console.error("Ошибка сохранения залётов:", error);
+    await supabase.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
 }
 async function saveRegSettingsToSupabase() {
-    const { error } = await supabase.from('reg_settings').upsert({ id: 1, ...regSettings });
-    if (error) console.error("Ошибка сохранения настроек регистрации:", error);
-}
-async function addLogToSupabase(action, details) {
-    const log = { timestamp: new Date().toLocaleString(), action, details };
-    const { error } = await supabase.from('admin_logs').insert(log);
-    if (error) console.error("Ошибка сохранения лога:", error);
-    adminLogs.unshift(log);
-    if (adminLogs.length > 200) adminLogs.pop();
-    if (isAdmin) renderLogs();
-}
-async function addDisqualHistoryToSupabase(pilotName, reason, actionType) {
-    const record = { date: new Date().toLocaleString(), pilotName, reason, actionType };
-    const { error } = await supabase.from('disqual_history').insert(record);
-    if (error) console.error("Ошибка сохранения истории дискв.:", error);
-    disqualHistory.unshift(record);
-    if (disqualHistory.length > 200) disqualHistory.pop();
-    if (isAdmin) renderDisqualHistory();
+    await supabase.from('reg_settings').upsert({ id: 1, ...regSettings });
 }
 async function capturePointsHistory() {
     const now = new Date().toLocaleDateString();
     const top5 = [...pilotsData].sort((a,b) => (b.points||0) - (a.points||0)).slice(0,5);
     const points = top5.map(p => p.points||0);
     const record = { date: now, points: JSON.stringify(points) };
-    const { error } = await supabase.from('points_history').insert(record);
-    if (error) console.error("Ошибка сохранения истории очков:", error);
+    await supabase.from('points_history').insert(record);
     pointsHistory.push({ date: now, points });
     if (pointsHistory.length > 10) pointsHistory.shift();
     updateChart();
 }
 async function saveCustomToSupabase() {
-    const { error } = await supabase.from('custom_data').upsert({ id: 1, customLogo, customBg });
-    if (error) console.error("Ошибка сохранения кастомизации:", error);
+    await supabase.from('custom_data').upsert({ id: 1, customLogo, customBg });
 }
 async function saveAdminPasswordToSupabase() {
-    const { error } = await supabase.from('admin_password').upsert({ id: 1, value: adminPassword });
-    if (error) console.error("Ошибка сохранения пароля:", error);
+    await supabase.from('admin_password').upsert({ id: 1, value: adminPassword });
 }
-
-// ========== ЛОГИРОВАНИЕ (ОБЁРТКИ) ==========
-function addLog(action, details) { addLogToSupabase(action, details); }
-function addDisqualHistory(pilotName, reason, actionType) { addDisqualHistoryToSupabase(pilotName, reason, actionType); }
 
 // ========== ОСНОВНАЯ ТАБЛИЦА ==========
 function filterAndSortData() {
@@ -331,8 +314,8 @@ function renderTable() {
             ? `<span class="status-icon"><i class="fas fa-ban"></i></span> <span class="disqualified-text" title="Причина: ${escapeHtml(p.disqualificationReason) || 'не указана'}">Дискв.</span>`
             : `<span class="status-icon"><i class="fas fa-check-circle" style="color:#6fbf6f;"></i></span> Активен`;
         const rowClass = p.disqualified ? "disqualified-row" : "";
-        const bestLapDisplay = (p.bestLap === null || p.bestLap === undefined) ? "—" : p.bestLap.toFixed(3) + " s";
-        const pointsDisplay = (p.points === null || p.points === undefined) ? "—" : p.points;
+        const bestLapDisplay = (p.bestLap === null) ? "—" : p.bestLap.toFixed(3) + " s";
+        const pointsDisplay = (p.points === null) ? "—" : p.points;
         let actionsHtml = "";
         if (isAdmin) {
             actionsHtml = `<td>
@@ -441,7 +424,7 @@ function renderHeatsList() {
     for (let heatNum in groups) {
         html += `<div class="heat-card"><h4><i class="fas fa-flag-checkered"></i> Залёт №${heatNum}</h4><ul class="heat-pilot-list">`;
         groups[heatNum].forEach(p => {
-            const ptsDisplay = (p.points === null || p.points === undefined) ? "—" : p.points;
+            const ptsDisplay = (p.points === null) ? "—" : p.points;
             html += `<li>🏁 ${escapeHtml(p.name)} (${p.countryCode}) – ${ptsDisplay} очков</li>`;
         });
         html += `</ul></div>`;
@@ -571,8 +554,8 @@ function renderPlayoff() {
 function renderAdminList() {
     pilotsAdminListDiv.innerHTML = "";
     pilotsData.forEach(pilot => {
-        const bestLapText = (pilot.bestLap === null || pilot.bestLap === undefined) ? "—" : pilot.bestLap.toFixed(3) + "s";
-        const pointsText = (pilot.points === null || pilot.points === undefined) ? "—" : pilot.points;
+        const bestLapText = (pilot.bestLap === null) ? "—" : pilot.bestLap.toFixed(3) + "s";
+        const pointsText = (pilot.points === null) ? "—" : pilot.points;
         const card = document.createElement("div");
         card.className = "pilot-card";
         card.innerHTML = `
@@ -599,8 +582,8 @@ function startEditPilot(id) {
     editName.value = p.name;
     editCountryCode.value = p.countryCode;
     editCountryName.value = p.countryName;
-    editBestLap.value = (p.bestLap === null || p.bestLap === undefined) ? "" : p.bestLap;
-    editPoints.value = (p.points === null || p.points === undefined) ? "" : p.points;
+    editBestLap.value = (p.bestLap === null) ? "" : p.bestLap;
+    editPoints.value = (p.points === null) ? "" : p.points;
     addPilotBtn.innerHTML = '<i class="fas fa-pen"></i> Сохранить';
     cancelEditBtn.style.display = "inline-block";
     formMessage.innerHTML = "Редактирование: " + p.name;
@@ -1010,7 +993,7 @@ async function registerNewPilot() {
     addLog("Регистрация", `Новая команда: ${name}`);
 }
 
-// ========== CSV ЭКСПОРТ/ИМПОРТ ==========
+// ========== CSV ==========
 function exportToCSV() {
     const csvRows = [["id","name","countryCode","countryName","bestLap","points","disqualified","disqualificationReason"]];
     for (let p of pilotsData) {
@@ -1095,15 +1078,9 @@ function loginAdmin() {
         isAdmin = true;
         closeAdminModal();
         adminPanel.style.display = "block";
-        renderAdminList();
-        renderDisqualList();
-        renderHeatsAssignment();
-        renderLogs();
-        renderDisqualHistory();
+        renderAdminList(); renderDisqualList(); renderHeatsAssignment(); renderLogs(); renderDisqualHistory();
         addLog("Вход", "Администратор вошёл в панель");
-    } else {
-        adminErrorSpan.innerText = "Неверный пароль!";
-    }
+    } else adminErrorSpan.innerText = "Неверный пароль!";
 }
 function logoutAdmin() {
     isAdmin = false;
@@ -1137,22 +1114,14 @@ const translations = {
 function setLanguage(lang) {
     currentLang = lang;
     const t = translations[lang];
-    const top3TitleElem = document.getElementById("top3Title");
-    if (top3TitleElem) top3TitleElem.innerText = t.top3Title;
-    const chartTitleElem = document.getElementById("chartTitle");
-    if (chartTitleElem) chartTitleElem.innerText = t.chartTitle;
-    const regTitleElem = document.getElementById("regTitle");
-    if (regTitleElem) regTitleElem.innerText = t.regTitle;
-    const regNameLabelElem = document.getElementById("regNameLabel");
-    if (regNameLabelElem) regNameLabelElem.innerText = t.regNameLabel;
-    const regCodeLabelElem = document.getElementById("regCodeLabel");
-    if (regCodeLabelElem) regCodeLabelElem.innerText = t.regCodeLabel;
-    const regCountryLabelElem = document.getElementById("regCountryLabel");
-    if (regCountryLabelElem) regCountryLabelElem.innerText = t.regCountryLabel;
-    const regBtnTextSpan = document.querySelector("#registerBtn span");
-    if (regBtnTextSpan) regBtnTextSpan.innerText = t.regBtnText;
-    const closedMsgTextSpan = document.getElementById("closedMsgText");
-    if (closedMsgTextSpan) closedMsgTextSpan.innerText = t.closedMsgText;
+    document.getElementById("top3Title").innerText = t.top3Title;
+    document.getElementById("chartTitle").innerText = t.chartTitle;
+    document.getElementById("regTitle").innerText = t.regTitle;
+    document.getElementById("regNameLabel").innerText = t.regNameLabel;
+    document.getElementById("regCodeLabel").innerText = t.regCodeLabel;
+    document.getElementById("regCountryLabel").innerText = t.regCountryLabel;
+    document.querySelector("#registerBtn span").innerText = t.regBtnText;
+    document.getElementById("closedMsgText").innerText = t.closedMsgText;
     document.querySelectorAll(".lang-btn").forEach(btn => btn.classList.remove("active"));
     if (lang === "ru") langRuBtn.classList.add("active");
     else langEnBtn.classList.add("active");
