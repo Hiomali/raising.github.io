@@ -1,12 +1,8 @@
 // ========== КОНФИГУРАЦИЯ SUPABASE ==========
 const SUPABASE_URL = "https://rzhsrtxdxcaxvowsobgl.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6aHNydHhkeGNheHZvd3NvYmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjkxMjEsImV4cCI6MjA5NjQwNTEyMX0.sz3PdejgEt8wCGaJjqk4hPZcl1w0UAELtHm6I3EFXbU";
-supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-if (typeof supabase !== 'undefined') {
-    console.log("Supabase SDK уже загружен");
-} else {
-    console.error("Supabase SDK не найден, проверьте подключение скрипта в index.html");
-}
+// Используем глобальный объект supabase (уже загружен через SDK) и создаём клиент с другим именем
+const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
 let pilotsData = [];
@@ -28,7 +24,7 @@ let regCheckInterval = null;
 let regTimerInterval = null;
 let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
 
-// DOM элементы
+// DOM элементы (все, как у вас)
 const tbody = document.getElementById("tableBody");
 const searchInput = document.getElementById("searchInput");
 const resetBtn = document.getElementById("resetSearchBtn");
@@ -116,7 +112,7 @@ function addLog(action, details) {
     const log = { timestamp: new Date().toLocaleString(), action, details };
     adminLogs.unshift(log);
     if (adminLogs.length > 200) adminLogs.pop();
-    supabase.from('admin_logs').insert(log).then();
+    sbClient.from('admin_logs').insert(log).then();
     if (isAdmin) renderLogs();
 }
 
@@ -124,7 +120,7 @@ function addDisqualHistory(pilotName, reason, actionType) {
     const record = { date: new Date().toLocaleString(), pilotName, reason, actionType };
     disqualHistory.unshift(record);
     if (disqualHistory.length > 200) disqualHistory.pop();
-    supabase.from('disqual_history').insert(record).then();
+    sbClient.from('disqual_history').insert(record).then();
     if (isAdmin) renderDisqualHistory();
 }
 
@@ -132,7 +128,7 @@ function addDisqualHistory(pilotName, reason, actionType) {
 async function loadAllData() {
     try {
         // Пилоты
-        const { data: pilots, error: pilotsErr } = await supabase.from('pilots').select('*');
+        const { data: pilots, error: pilotsErr } = await sbClient.from('pilots').select('*');
         if (pilotsErr) throw pilotsErr;
         if (pilots && pilots.length) {
             pilotsData = pilots.map(p => ({ ...p, bestLap: p.bestLap ?? null, points: p.points ?? null }));
@@ -149,11 +145,11 @@ async function loadAllData() {
                 { id: Date.now()+9, name: "Rocket Blade", countryCode: "🇧🇷", countryName: "Brazil", bestLap: 42.990, points: 263, disqualified: false, disqualificationReason: "" },
                 { id: Date.now()+10, name: "Sky Sphinx", countryCode: "🇿🇦", countryName: "South Africa", bestLap: 45.203, points: 230, disqualified: false, disqualificationReason: "" }
             ];
-            await supabase.from('pilots').upsert(pilotsData, { onConflict: 'id' });
+            await sbClient.from('pilots').upsert(pilotsData, { onConflict: 'id' });
         }
 
         // Heats
-        const { data: heats, error: heatsErr } = await supabase.from('heats').select('*');
+        const { data: heats, error: heatsErr } = await sbClient.from('heats').select('*');
         if (heatsErr) throw heatsErr;
         if (heats && heats.length) {
             heatsMap = {};
@@ -162,30 +158,30 @@ async function loadAllData() {
             heatsMap = {};
             pilotsData.forEach(p => { heatsMap[p.id] = 0; });
             const heatsArray = Object.entries(heatsMap).map(([pilot_id, heat_number]) => ({ pilot_id: parseInt(pilot_id), heat_number }));
-            await supabase.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
+            await sbClient.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
         }
 
         // Настройки регистрации
-        const { data: reg, error: regErr } = await supabase.from('reg_settings').select('*').eq('id', 1).maybeSingle();
+        const { data: reg, error: regErr } = await sbClient.from('reg_settings').select('*').eq('id', 1).maybeSingle();
         if (regErr) throw regErr;
         if (reg) regSettings = reg;
         else {
             regSettings = { id: 1, enabled: true, useTimer: false, openTime: null, closeTime: null };
-            await supabase.from('reg_settings').upsert(regSettings);
+            await sbClient.from('reg_settings').upsert(regSettings);
         }
 
         // Логи
-        const { data: logs, error: logsErr } = await supabase.from('admin_logs').select('*').order('id', { ascending: false }).limit(200);
+        const { data: logs, error: logsErr } = await sbClient.from('admin_logs').select('*').order('id', { ascending: false }).limit(200);
         if (logsErr) throw logsErr;
         adminLogs = logs || [];
 
         // История дисквалификаций
-        const { data: discHist, error: discErr } = await supabase.from('disqual_history').select('*').order('id', { ascending: false }).limit(200);
+        const { data: discHist, error: discErr } = await sbClient.from('disqual_history').select('*').order('id', { ascending: false }).limit(200);
         if (discErr) throw discErr;
         disqualHistory = discHist || [];
 
         // История очков
-        const { data: pointsHist, error: pointsErr } = await supabase.from('points_history').select('*').order('id', { ascending: true });
+        const { data: pointsHist, error: pointsErr } = await sbClient.from('points_history').select('*').order('id', { ascending: true });
         if (pointsErr) throw pointsErr;
         if (pointsHist && pointsHist.length) {
             pointsHistory = pointsHist.map(h => ({ date: h.date, points: h.points }));
@@ -194,23 +190,23 @@ async function loadAllData() {
         }
 
         // Кастомизация
-        const { data: custom, error: customErr } = await supabase.from('custom_data').select('*').eq('id', 1).maybeSingle();
+        const { data: custom, error: customErr } = await sbClient.from('custom_data').select('*').eq('id', 1).maybeSingle();
         if (customErr) throw customErr;
         if (custom) {
             customLogo = custom.customLogo;
             customBg = custom.customBg;
         } else {
-            await supabase.from('custom_data').insert({ id: 1, customLogo, customBg });
+            await sbClient.from('custom_data').insert({ id: 1, customLogo, customBg });
         }
         const customLogoElem = document.getElementById("customLogo");
         if (customLogoElem) customLogoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
         if (customBg) document.body.style.backgroundImage = `url(${customBg})`;
 
         // Пароль администратора
-        const { data: pass, error: passErr } = await supabase.from('admin_password').select('*').eq('id', 1).maybeSingle();
+        const { data: pass, error: passErr } = await sbClient.from('admin_password').select('*').eq('id', 1).maybeSingle();
         if (passErr) throw passErr;
         if (pass) adminPassword = pass.value;
-        else await supabase.from('admin_password').insert({ id: 1, value: adminPassword });
+        else await sbClient.from('admin_password').insert({ id: 1, value: adminPassword });
 
         renderTable();
         renderHeatsList();
@@ -235,30 +231,30 @@ async function loadAllData() {
 
 // ========== СОХРАНЕНИЕ В SUPABASE ==========
 async function savePilotsToSupabase() {
-    await supabase.from('pilots').upsert(pilotsData, { onConflict: 'id' });
+    await sbClient.from('pilots').upsert(pilotsData, { onConflict: 'id' });
 }
 async function saveHeatsToSupabase() {
     const heatsArray = Object.entries(heatsMap).map(([pilot_id, heat_number]) => ({ pilot_id: parseInt(pilot_id), heat_number }));
-    await supabase.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
+    await sbClient.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
 }
 async function saveRegSettingsToSupabase() {
-    await supabase.from('reg_settings').upsert({ id: 1, ...regSettings });
+    await sbClient.from('reg_settings').upsert({ id: 1, ...regSettings });
 }
 async function capturePointsHistory() {
     const now = new Date().toLocaleDateString();
     const top5 = [...pilotsData].sort((a,b) => (b.points||0) - (a.points||0)).slice(0,5);
     const points = top5.map(p => p.points||0);
     const record = { date: now, points: JSON.stringify(points) };
-    await supabase.from('points_history').insert(record);
+    await sbClient.from('points_history').insert(record);
     pointsHistory.push({ date: now, points });
     if (pointsHistory.length > 10) pointsHistory.shift();
     updateChart();
 }
 async function saveCustomToSupabase() {
-    await supabase.from('custom_data').upsert({ id: 1, customLogo, customBg });
+    await sbClient.from('custom_data').upsert({ id: 1, customLogo, customBg });
 }
 async function saveAdminPasswordToSupabase() {
-    await supabase.from('admin_password').upsert({ id: 1, value: adminPassword });
+    await sbClient.from('admin_password').upsert({ id: 1, value: adminPassword });
 }
 
 // ========== ОСНОВНАЯ ТАБЛИЦА ==========
@@ -1119,14 +1115,22 @@ const translations = {
 function setLanguage(lang) {
     currentLang = lang;
     const t = translations[lang];
-    document.getElementById("top3Title").innerText = t.top3Title;
-    document.getElementById("chartTitle").innerText = t.chartTitle;
-    document.getElementById("regTitle").innerText = t.regTitle;
-    document.getElementById("regNameLabel").innerText = t.regNameLabel;
-    document.getElementById("regCodeLabel").innerText = t.regCodeLabel;
-    document.getElementById("regCountryLabel").innerText = t.regCountryLabel;
-    document.querySelector("#registerBtn span").innerText = t.regBtnText;
-    document.getElementById("closedMsgText").innerText = t.closedMsgText;
+    const top3TitleElem = document.getElementById("top3Title");
+    if (top3TitleElem) top3TitleElem.innerText = t.top3Title;
+    const chartTitleElem = document.getElementById("chartTitle");
+    if (chartTitleElem) chartTitleElem.innerText = t.chartTitle;
+    const regTitleElem = document.getElementById("regTitle");
+    if (regTitleElem) regTitleElem.innerText = t.regTitle;
+    const regNameLabelElem = document.getElementById("regNameLabel");
+    if (regNameLabelElem) regNameLabelElem.innerText = t.regNameLabel;
+    const regCodeLabelElem = document.getElementById("regCodeLabel");
+    if (regCodeLabelElem) regCodeLabelElem.innerText = t.regCodeLabel;
+    const regCountryLabelElem = document.getElementById("regCountryLabel");
+    if (regCountryLabelElem) regCountryLabelElem.innerText = t.regCountryLabel;
+    const regBtnTextSpan = document.querySelector("#registerBtn span");
+    if (regBtnTextSpan) regBtnTextSpan.innerText = t.regBtnText;
+    const closedMsgTextSpan = document.getElementById("closedMsgText");
+    if (closedMsgTextSpan) closedMsgTextSpan.innerText = t.closedMsgText;
     document.querySelectorAll(".lang-btn").forEach(btn => btn.classList.remove("active"));
     if (lang === "ru") langRuBtn.classList.add("active");
     else langEnBtn.classList.add("active");
@@ -1204,7 +1208,7 @@ async function init() {
     if (importCsvBtn) importCsvBtn.addEventListener("click", () => { if (importCsvFile.files[0]) importFromCSV(importCsvFile.files[0]); else csvMessage.innerText = "Выберите файл"; });
     if (saveLogoBtn) saveLogoBtn.addEventListener("click", saveCustomLogo);
     if (saveBgBtn) saveBgBtn.addEventListener("click", saveCustomBg);
-    if (clearLogsBtn) clearLogsBtn.addEventListener("click", async () => { adminLogs = []; await supabase.from('admin_logs').delete().neq('id', 0); renderLogs(); addLog("Очистка", "Логи удалены"); });
+    if (clearLogsBtn) clearLogsBtn.addEventListener("click", async () => { adminLogs = []; await sbClient.from('admin_logs').delete().neq('id', 0); renderLogs(); addLog("Очистка", "Логи удалены"); });
     if (saveLapTimeBtn) saveLapTimeBtn.addEventListener("click", saveLapTime);
     if (importFromRHBtn) importFromRHBtn.addEventListener("click", importFromRotorHazard);
     if (importManualJsonBtn) importManualJsonBtn.addEventListener("click", importManualJson);
