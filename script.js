@@ -23,6 +23,9 @@ let regCheckInterval = null;
 let regTimerInterval = null;
 let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
 
+console.log("Скрипт запущен");
+alert("Скрипт работает");
+
 // DOM элементы
 const tbody = document.getElementById("tableBody");
 const searchInput = document.getElementById("searchInput");
