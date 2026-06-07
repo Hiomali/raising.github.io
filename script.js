@@ -1,7 +1,12 @@
-v// ========== КОНФИГУРАЦИЯ SUPABASE ==========
+// ========== КОНФИГУРАЦИЯ SUPABASE ==========
 const SUPABASE_URL = "https://rzhsrtxdxcaxvowsobgl.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6aHNydHhkeGNheHZvd3NvYmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjkxMjEsImV4cCI6MjA5NjQwNTEyMX0.sz3PdejgEt8wCGaJjqk4hPZcl1w0UAELtHm6I3EFXbU";
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+if (typeof supabase !== 'undefined') {
+    console.log("Supabase SDK уже загружен");
+} else {
+    console.error("Supabase SDK не найден, проверьте подключение скрипта в index.html");
+}
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
 let pilotsData = [];
