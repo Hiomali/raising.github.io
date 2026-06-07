@@ -1,7 +1,9 @@
 // ========== КОНФИГУРАЦИЯ SUPABASE ==========
 const SUPABASE_URL = "https://rzhsrtxdxcaxvowsobgl.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6aHNydHhkeGNheHZvd3NvYmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjkxMjEsImV4cCI6MjA5NjQwNTEyMX0.sz3PdejgEt8wCGaJjqk4hPZcl1w0UAELtHm6I3EFXbU";
-const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Используем глобальный объект supabase (загружен через SDK) и создаём клиент с другим именем
+const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
 let pilotsData = [];
@@ -126,7 +128,6 @@ function addDisqualHistory(pilotName, reason, actionType) {
 // ========== ЗАГРУЗКА ДАННЫХ ИЗ SUPABASE ==========
 async function loadAllData() {
     try {
-        // Пилоты
         const { data: pilots, error: pilotsErr } = await sbClient.from('pilots').select('*');
         if (pilotsErr) throw pilotsErr;
         if (pilots && pilots.length) {
@@ -147,7 +148,6 @@ async function loadAllData() {
             await sbClient.from('pilots').upsert(pilotsData, { onConflict: 'id' });
         }
 
-        // Heats
         const { data: heats, error: heatsErr } = await sbClient.from('heats').select('*');
         if (heatsErr) throw heatsErr;
         if (heats && heats.length) {
@@ -160,7 +160,6 @@ async function loadAllData() {
             await sbClient.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
         }
 
-        // Настройки регистрации
         const { data: reg, error: regErr } = await sbClient.from('reg_settings').select('*').eq('id', 1).maybeSingle();
         if (regErr) throw regErr;
         if (reg) regSettings = reg;
@@ -169,17 +168,14 @@ async function loadAllData() {
             await sbClient.from('reg_settings').upsert(regSettings);
         }
 
-        // Логи
         const { data: logs, error: logsErr } = await sbClient.from('admin_logs').select('*').order('id', { ascending: false }).limit(200);
         if (logsErr) throw logsErr;
         adminLogs = logs || [];
 
-        // История дисквалификаций
         const { data: discHist, error: discErr } = await sbClient.from('disqual_history').select('*').order('id', { ascending: false }).limit(200);
         if (discErr) throw discErr;
         disqualHistory = discHist || [];
 
-        // История очков
         const { data: pointsHist, error: pointsErr } = await sbClient.from('points_history').select('*').order('id', { ascending: true });
         if (pointsErr) throw pointsErr;
         if (pointsHist && pointsHist.length) {
@@ -188,7 +184,6 @@ async function loadAllData() {
             await capturePointsHistory();
         }
 
-        // Кастомизация
         const { data: custom, error: customErr } = await sbClient.from('custom_data').select('*').eq('id', 1).maybeSingle();
         if (customErr) throw customErr;
         if (custom) {
@@ -201,7 +196,6 @@ async function loadAllData() {
         if (customLogoElem) customLogoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
         if (customBg) document.body.style.backgroundImage = `url(${customBg})`;
 
-        // Пароль администратора
         const { data: pass, error: passErr } = await sbClient.from('admin_password').select('*').eq('id', 1).maybeSingle();
         if (passErr) throw passErr;
         if (pass) adminPassword = pass.value;
