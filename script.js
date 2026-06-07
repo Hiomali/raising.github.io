@@ -1,8 +1,5 @@
-// ========== КОНФИГУРАЦИЯ SUPABASE ==========
-const SUPABASE_URL = "https://rzhsrtxdxcaxvowsobgl.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6aHNydHhkeGNheHZvd3NvYmdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjkxMjEsImV4cCI6MjA5NjQwNTEyMX0.sz3PdejgEt8wCGaJjqk4hPZcl1w0UAELtHm6I3EFXbU";
-// Используем глобальный объект window.supabase (уже загружен через SDK), не создаём конфликт
-const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ========== КОНФИГУРАЦИЯ GOOGLE SHEETS ==========
+const GOOGLE_SHEETS_URL = "https://script.google.com/macros/s/AKfycbwUKAZ-HLcriFZEGWBl4g9UCu9M-verbuM8nisTz2LMyHp_8lqTvhp4eE7Y37hPrd5MUg/exec";  // ЗАМЕНИТЕ НА ВАШ URL
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
 let pilotsData = [];
@@ -24,7 +21,7 @@ let regCheckInterval = null;
 let regTimerInterval = null;
 let regSettings = { enabled: true, useTimer: false, openTime: null, closeTime: null };
 
-// DOM элементы (все, как в вашем HTML)
+// DOM элементы
 const tbody = document.getElementById("tableBody");
 const searchInput = document.getElementById("searchInput");
 const resetBtn = document.getElementById("resetSearchBtn");
@@ -112,23 +109,23 @@ function addLog(action, details) {
     const log = { timestamp: new Date().toLocaleString(), action, details };
     adminLogs.unshift(log);
     if (adminLogs.length > 200) adminLogs.pop();
-    sbClient.from('admin_logs').insert(log).catch(e => console.error("Log insert error:", e));
+    localStorage.setItem("adminLogs", JSON.stringify(adminLogs));
     if (isAdmin) renderLogs();
 }
 
 function addDisqualHistory(pilotName, reason, actionType) {
-    const record = { date: new Date().toLocaleString(), pilotName, reason, actionType };
-    disqualHistory.unshift(record);
+    disqualHistory.unshift({ date: new Date().toLocaleString(), pilotName, reason, actionType });
     if (disqualHistory.length > 200) disqualHistory.pop();
-    sbClient.from('disqual_history').insert(record).catch(e => console.error("Disqual history insert error:", e));
+    localStorage.setItem("disqualHistory", JSON.stringify(disqualHistory));
     if (isAdmin) renderDisqualHistory();
 }
 
-// ========== ЗАГРУЗКА ДАННЫХ ИЗ SUPABASE ==========
-async function loadAllData() {
+// ========== ЗАГРУЗКА ИЗ GOOGLE SHEETS ==========
+async function loadFromGoogleSheets() {
     try {
-        const { data: pilots, error: pilotsErr } = await sbClient.from('pilots').select('*');
-        if (pilotsErr) throw pilotsErr;
+        const response = await fetch(GOOGLE_SHEETS_URL);
+        if (!response.ok) throw new Error("Ошибка загрузки");
+        const pilots = await response.json();
         if (pilots && pilots.length) {
             pilotsData = pilots.map(p => ({ ...p, bestLap: p.bestLap ?? null, points: p.points ?? null }));
         } else {
@@ -144,109 +141,88 @@ async function loadAllData() {
                 { id: Date.now()+9, name: "Rocket Blade", countryCode: "🇧🇷", countryName: "Brazil", bestLap: 42.990, points: 263, disqualified: false, disqualificationReason: "" },
                 { id: Date.now()+10, name: "Sky Sphinx", countryCode: "🇿🇦", countryName: "South Africa", bestLap: 45.203, points: 230, disqualified: false, disqualificationReason: "" }
             ];
-            await sbClient.from('pilots').upsert(pilotsData, { onConflict: 'id' });
+            await saveToGoogleSheets();
         }
-
-        const { data: heats, error: heatsErr } = await sbClient.from('heats').select('*');
-        if (heatsErr) throw heatsErr;
-        if (heats && heats.length) {
-            heatsMap = {};
-            heats.forEach(h => { heatsMap[h.pilot_id] = h.heat_number; });
-        } else {
-            heatsMap = {};
-            pilotsData.forEach(p => { heatsMap[p.id] = 0; });
-            const heatsArray = Object.entries(heatsMap).map(([pilot_id, heat_number]) => ({ pilot_id: parseInt(pilot_id), heat_number }));
-            await sbClient.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
-        }
-
-        const { data: reg, error: regErr } = await sbClient.from('reg_settings').select('*').eq('id', 1).maybeSingle();
-        if (regErr) throw regErr;
-        if (reg) regSettings = reg;
-        else {
-            regSettings = { id: 1, enabled: true, useTimer: false, openTime: null, closeTime: null };
-            await sbClient.from('reg_settings').upsert(regSettings);
-        }
-
-        const { data: logs, error: logsErr } = await sbClient.from('admin_logs').select('*').order('id', { ascending: false }).limit(200);
-        if (logsErr) throw logsErr;
-        adminLogs = logs || [];
-
-        const { data: discHist, error: discErr } = await sbClient.from('disqual_history').select('*').order('id', { ascending: false }).limit(200);
-        if (discErr) throw discErr;
-        disqualHistory = discHist || [];
-
-        const { data: pointsHist, error: pointsErr } = await sbClient.from('points_history').select('*').order('id', { ascending: true });
-        if (pointsErr) throw pointsErr;
-        if (pointsHist && pointsHist.length) {
-            pointsHistory = pointsHist.map(h => ({ date: h.date, points: h.points }));
-        } else {
-            await capturePointsHistory();
-        }
-
-        const { data: custom, error: customErr } = await sbClient.from('custom_data').select('*').eq('id', 1).maybeSingle();
-        if (customErr) throw customErr;
-        if (custom) {
-            customLogo = custom.customLogo;
-            customBg = custom.customBg;
-        } else {
-            await sbClient.from('custom_data').insert({ id: 1, customLogo, customBg });
-        }
-        const customLogoElem = document.getElementById("customLogo");
-        if (customLogoElem) customLogoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
-        if (customBg) document.body.style.backgroundImage = `url(${customBg})`;
-
-        const { data: pass, error: passErr } = await sbClient.from('admin_password').select('*').eq('id', 1).maybeSingle();
-        if (passErr) throw passErr;
-        if (pass) adminPassword = pass.value;
-        else await sbClient.from('admin_password').insert({ id: 1, value: adminPassword });
-
-        renderTable();
-        renderHeatsList();
-        updateTop3();
-        renderPlayoff();
-        updateChart();
-        if (isAdmin) {
-            renderAdminList();
-            renderDisqualList();
-            renderHeatsAssignment();
-            renderLogs();
-            renderDisqualHistory();
-        }
-        loadRegSettingsToUI();
-        startRegistrationWatcher();
-        startTimerDisplay();
     } catch (err) {
-        console.error("Ошибка загрузки из Supabase:", err);
-        alert("Ошибка подключения к Supabase. Проверьте интернет и настройки.");
+        console.error("Ошибка загрузки из Google Sheets:", err);
+        const stored = localStorage.getItem("phoenixRacingData");
+        if (stored) {
+            pilotsData = JSON.parse(stored);
+        } else {
+            pilotsData = [ /* начальные данные */ ];
+        }
     }
+    // Загружаем остальные данные из localStorage
+    const storedHeats = localStorage.getItem("heatsAssignment");
+    if (storedHeats) heatsMap = JSON.parse(storedHeats);
+    else {
+        heatsMap = {};
+        pilotsData.forEach(p => { heatsMap[p.id] = 0; });
+        saveHeatsToLocalStorage();
+    }
+    const storedPass = localStorage.getItem("adminPassword");
+    if (storedPass) adminPassword = storedPass;
+    const storedLogs = localStorage.getItem("adminLogs");
+    if (storedLogs) adminLogs = JSON.parse(storedLogs);
+    const storedDisqualHistory = localStorage.getItem("disqualHistory");
+    if (storedDisqualHistory) disqualHistory = JSON.parse(storedDisqualHistory);
+    const storedPointsHistory = localStorage.getItem("pointsHistory");
+    if (storedPointsHistory) pointsHistory = JSON.parse(storedPointsHistory);
+    else capturePointsHistory();
+    const storedCustomLogo = localStorage.getItem("customLogo");
+    if (storedCustomLogo) customLogo = storedCustomLogo;
+    const storedCustomBg = localStorage.getItem("customBg");
+    if (storedCustomBg) customBg = storedCustomBg;
+    const customLogoElem = document.getElementById("customLogo");
+    if (customLogoElem) customLogoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
+    if (customBg) document.body.style.backgroundImage = `url(${customBg})`;
+    loadRegSettings();
+
+    renderTable();
+    renderHeatsList();
+    updateTop3();
+    renderPlayoff();
+    updateChart();
+    if (isAdmin) {
+        renderAdminList();
+        renderDisqualList();
+        renderHeatsAssignment();
+        renderLogs();
+        renderDisqualHistory();
+    }
+    startRegistrationWatcher();
+    startTimerDisplay();
 }
 
-// ========== СОХРАНЕНИЕ В SUPABASE ==========
-async function savePilotsToSupabase() {
-    await sbClient.from('pilots').upsert(pilotsData, { onConflict: 'id' });
+async function saveToGoogleSheets() {
+    try {
+        await fetch(GOOGLE_SHEETS_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(pilotsData)
+        });
+    } catch (err) {
+        console.error("Ошибка сохранения в Google Sheets:", err);
+    }
+    localStorage.setItem("phoenixRacingData", JSON.stringify(pilotsData));
 }
-async function saveHeatsToSupabase() {
-    const heatsArray = Object.entries(heatsMap).map(([pilot_id, heat_number]) => ({ pilot_id: parseInt(pilot_id), heat_number }));
-    await sbClient.from('heats').upsert(heatsArray, { onConflict: 'pilot_id' });
+
+function saveDataToLocalStorage() {
+    localStorage.setItem("phoenixRacingData", JSON.stringify(pilotsData));
+    capturePointsHistory();
+    saveToGoogleSheets();
 }
-async function saveRegSettingsToSupabase() {
-    await sbClient.from('reg_settings').upsert({ id: 1, ...regSettings });
+function saveHeatsToLocalStorage() {
+    localStorage.setItem("heatsAssignment", JSON.stringify(heatsMap));
 }
-async function capturePointsHistory() {
+function capturePointsHistory() {
     const now = new Date().toLocaleDateString();
     const top5 = [...pilotsData].sort((a,b) => (b.points||0) - (a.points||0)).slice(0,5);
-    const points = top5.map(p => p.points||0);
-    const record = { date: now, points: JSON.stringify(points) };
-    await sbClient.from('points_history').insert(record);
-    pointsHistory.push({ date: now, points });
+    pointsHistory.push({ date: now, points: top5.map(p => p.points||0) });
     if (pointsHistory.length > 10) pointsHistory.shift();
+    localStorage.setItem("pointsHistory", JSON.stringify(pointsHistory));
     updateChart();
-}
-async function saveCustomToSupabase() {
-    await sbClient.from('custom_data').upsert({ id: 1, customLogo, customBg });
-}
-async function saveAdminPasswordToSupabase() {
-    await sbClient.from('admin_password').upsert({ id: 1, value: adminPassword });
 }
 
 // ========== ОСНОВНАЯ ТАБЛИЦА ==========
@@ -295,7 +271,7 @@ function renderTable() {
     const activePilots = allSorted.filter(p => !p.disqualified);
     rowStatsSpan.innerHTML = `🏁 ${allSorted.length} / ${pilotsData.length} пилотов | Активных: ${activePilots.length}`;
     if (!allSorted.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">🚁 Нет пилотов<\/td><\/tr>`;
+        tbody.innerHTML = `<td><td colspan="7" style="text-align:center;">🚁 Нет пилотов<\/td><\/tr>`;
         updateSortIndicators();
         return;
     }
@@ -464,7 +440,7 @@ function renderHeatsAssignment() {
         });
     });
 }
-async function saveHeatsDistribution() {
+function saveHeatsDistribution() {
     const counts = getHeatCounts();
     let overflow = false;
     for (let i = 1; i <= 6; i++) {
@@ -475,13 +451,13 @@ async function saveHeatsDistribution() {
         }
     }
     if (overflow) return;
-    await saveHeatsToSupabase();
+    saveHeatsToLocalStorage();
     renderHeatsList();
     formMessage.innerHTML = "✅ Распределение по залётам сохранено!";
     setTimeout(() => { if(formMessage) formMessage.innerHTML = ""; }, 2000);
     addLog("Залёты", "Распределение сохранено");
 }
-async function randomizeHeats() {
+function randomizeHeats() {
     const active = pilotsData.filter(p => !p.disqualified);
     const heats = [[],[],[],[],[],[]];
     for (let p of active) {
@@ -496,7 +472,7 @@ async function randomizeHeats() {
         }
         if (!placed) heatsMap[p.id] = 0;
     }
-    await saveHeatsToSupabase();
+    saveHeatsToLocalStorage();
     renderHeatsList();
     if (isAdmin) renderHeatsAssignment();
     addLog("Жеребьёвка", "Случайное распределение по залётам");
@@ -612,8 +588,8 @@ async function addOrUpdatePilot() {
         formMessage.innerHTML = "✅ Пилот добавлен";
         addLog("Добавление", `Новый пилот ${name}`);
     }
-    await savePilotsToSupabase();
-    await saveHeatsToSupabase();
+    saveDataToLocalStorage();
+    saveHeatsToLocalStorage();
     cancelEdit();
     renderTable();
     updateTop3();
@@ -626,8 +602,8 @@ async function deletePilotById(id) {
     if (pilot) addLog("Удаление", `Пилот ${pilot.name} удалён`);
     pilotsData = pilotsData.filter(p => p.id !== id);
     delete heatsMap[id];
-    await savePilotsToSupabase();
-    await saveHeatsToSupabase();
+    saveDataToLocalStorage();
+    saveHeatsToLocalStorage();
     renderTable();
     updateTop3();
     renderPlayoff();
@@ -655,7 +631,7 @@ async function saveLapTime() {
     const oldBest = pilot.bestLap;
     if (oldBest === null || time < oldBest) {
         pilot.bestLap = time;
-        await savePilotsToSupabase();
+        saveDataToLocalStorage();
         renderTable();
         updateTop3();
         renderPlayoff();
@@ -699,7 +675,7 @@ async function importFromRotorHazard() {
                 }
             }
         }
-        await savePilotsToSupabase();
+        saveDataToLocalStorage();
         renderTable();
         updateTop3();
         renderPlayoff();
@@ -735,7 +711,7 @@ function importManualJson() {
                 }
             }
         }
-        savePilotsToSupabase();
+        saveDataToLocalStorage();
         renderTable();
         updateTop3();
         renderPlayoff();
@@ -788,7 +764,7 @@ async function disqualifyPilot(id, reason) {
     if (pilot && !pilot.disqualified) {
         pilot.disqualified = true;
         pilot.disqualificationReason = reason;
-        await savePilotsToSupabase();
+        saveDataToLocalStorage();
         renderTable();
         renderDisqualList();
         renderHeatsList();
@@ -805,7 +781,7 @@ async function restorePilot(id) {
     if (pilot && pilot.disqualified) {
         pilot.disqualified = false;
         pilot.disqualificationReason = "";
-        await savePilotsToSupabase();
+        saveDataToLocalStorage();
         renderTable();
         renderDisqualList();
         renderHeatsList();
@@ -843,7 +819,9 @@ function renderLogs() {
 }
 
 // ========== УПРАВЛЕНИЕ РЕГИСТРАЦИЕЙ ==========
-function loadRegSettingsToUI() {
+function loadRegSettings() {
+    const stored = localStorage.getItem("phoenixRegSettings");
+    if (stored) regSettings = JSON.parse(stored);
     if (isAdmin) {
         if (regEnabledCheckbox) regEnabledCheckbox.checked = regSettings.enabled;
         if (useTimerCheckbox) useTimerCheckbox.checked = regSettings.useTimer;
@@ -854,13 +832,13 @@ function loadRegSettingsToUI() {
     updateRegistrationUI();
     startTimerDisplay();
 }
-async function saveRegSettingsToStorage() {
-    await saveRegSettingsToSupabase();
+function saveRegSettingsToStorage() {
+    localStorage.setItem("phoenixRegSettings", JSON.stringify(regSettings));
     updateRegistrationUI();
     startTimerDisplay();
     if (isAdmin && regSettingsMessage) {
         regSettingsMessage.innerHTML = "✅ Настройки сохранены";
-        setTimeout(() => { if (regSettingsMessage) regSettingsMessage.innerHTML = ""; }, 2000);
+        setTimeout(() => regSettingsMessage.innerHTML = "", 2000);
     }
     addLog("Регистрация", `Настройки обновлены: enabled=${regSettings.enabled}, useTimer=${regSettings.useTimer}`);
 }
@@ -894,23 +872,16 @@ function updateRegistrationUI() {
             let nextTime = null;
             const now = new Date();
             if (regSettings.useTimer) {
-                if (regSettings.openTime && new Date(regSettings.openTime) > now) {
-                    nextTime = new Date(regSettings.openTime);
-                } else if (regSettings.closeTime && new Date(regSettings.closeTime) > now) {
-                    nextTime = new Date(regSettings.closeTime);
-                }
+                if (regSettings.openTime && new Date(regSettings.openTime) > now) nextTime = new Date(regSettings.openTime);
+                else if (regSettings.closeTime && new Date(regSettings.closeTime) > now) nextTime = new Date(regSettings.closeTime);
             }
-            if (nextTime) {
-                nextOpenSpan.innerText = nextTime.toLocaleString();
-            } else {
-                nextOpenSpan.innerText = "регистрация отключена администратором";
-            }
+            nextOpenSpan.innerText = nextTime ? nextTime.toLocaleString() : "регистрация отключена администратором";
         }
     }
 }
 function startRegistrationWatcher() {
     if (regCheckInterval) clearInterval(regCheckInterval);
-    regCheckInterval = setInterval(() => { updateRegistrationUI(); }, 60000);
+    regCheckInterval = setInterval(() => updateRegistrationUI(), 60000);
 }
 function startTimerDisplay() {
     if (regTimerInterval) clearInterval(regTimerInterval);
@@ -927,7 +898,7 @@ function startTimerDisplay() {
             return;
         }
         const diff = closeDate - now;
-        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const hours = Math.floor(diff / (1000*60*60));
         const minutes = Math.floor((diff % (3600000)) / 60000);
         const seconds = Math.floor((diff % 60000) / 1000);
         regTimerDiv.innerHTML = `🕒 До конца регистрации: ${hours}ч ${minutes}м ${seconds}с`;
@@ -954,30 +925,27 @@ async function registerNewPilot() {
     const newId = Date.now();
     const available = getAvailableHeats();
     let assignedHeat = 0;
-    if (available.length > 0) {
-        const randomIndex = Math.floor(Math.random() * available.length);
-        assignedHeat = available[randomIndex];
+    if (available.length) {
+        assignedHeat = available[Math.floor(Math.random() * available.length)];
     } else {
-        regMessage.innerHTML = "⚠️ Все залёты заполнены (максимум 4 пилота в каждом). Пилот добавлен без залёта. Администратор может позже назначить.";
+        regMessage.innerHTML = "⚠️ Все залёты заполнены (максимум 4 пилота). Пилот добавлен без залёта.";
         assignedHeat = 0;
     }
-    const newPilot = {
+    pilotsData.push({
         id: newId, name, countryCode: cc, countryName: cn,
         bestLap: null, points: null, disqualified: false, disqualificationReason: ""
-    };
-    pilotsData.push(newPilot);
+    });
     heatsMap[newId] = assignedHeat;
-    await savePilotsToSupabase();
-    await saveHeatsToSupabase();
+    saveDataToLocalStorage();
+    saveHeatsToLocalStorage();
     regName.value = "";
     regCountryCode.value = "";
     regCountryName.value = "";
-    let message = `✅ Команда "${name}" зарегистрирована!`;
-    if (assignedHeat !== 0) message += ` Назначен залёт №${assignedHeat}.`;
-    else message += ` Не назначен в залёт (все залёты заполнены). Администратор может назначить позже.`;
-    message += ` Лучший круг и очки будут добавлены позже администратором.`;
-    regMessage.innerHTML = message;
-    setTimeout(() => { regMessage.innerHTML = ""; }, 5000);
+    let msg = `✅ Команда "${name}" зарегистрирована!`;
+    if (assignedHeat) msg += ` Залёт №${assignedHeat}.`;
+    else msg += ` Не назначен в залёт (все залёты заполнены).`;
+    regMessage.innerHTML = msg;
+    setTimeout(() => regMessage.innerHTML = "", 5000);
     renderTable();
     renderHeatsList();
     updateTop3();
@@ -1000,32 +968,30 @@ function exportToCSV() {
     a.click();
     addLog("Экспорт", "CSV выгружен");
 }
-async function importFromCSV(file) {
+function importFromCSV(file) {
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const text = e.target.result;
-        const rows = text.split("\n").map(row => row.split(","));
+        const rows = e.target.result.split("\n").map(row => row.split(","));
         const newPilots = [];
         for (let i=1; i<rows.length; i++) {
             if (rows[i].length < 7) continue;
-            const id = parseInt(rows[i][0]) || Date.now()+i;
-            const name = rows[i][1];
-            const countryCode = rows[i][2];
-            const countryName = rows[i][3];
-            const bestLap = rows[i][4] === "" ? null : parseFloat(rows[i][4]);
-            const points = rows[i][5] === "" ? null : parseInt(rows[i][5]);
-            const disqualified = rows[i][6] === "true";
-            const disqualificationReason = rows[i][7] || "";
-            if (name && countryCode && countryName) {
-                newPilots.push({ id, name, countryCode, countryName, bestLap, points, disqualified, disqualificationReason });
-            }
+            newPilots.push({
+                id: parseInt(rows[i][0]) || Date.now()+i,
+                name: rows[i][1],
+                countryCode: rows[i][2],
+                countryName: rows[i][3],
+                bestLap: rows[i][4] === "" ? null : parseFloat(rows[i][4]),
+                points: rows[i][5] === "" ? null : parseInt(rows[i][5]),
+                disqualified: rows[i][6] === "true",
+                disqualificationReason: rows[i][7] || ""
+            });
         }
         if (newPilots.length) {
             pilotsData = newPilots;
             heatsMap = {};
-            pilotsData.forEach(p => { heatsMap[p.id] = 0; });
-            await savePilotsToSupabase();
-            await saveHeatsToSupabase();
+            pilotsData.forEach(p => heatsMap[p.id] = 0);
+            saveDataToLocalStorage();
+            saveHeatsToLocalStorage();
             renderTable();
             renderHeatsList();
             updateTop3();
@@ -1041,22 +1007,21 @@ async function importFromCSV(file) {
 }
 
 // ========== КАСТОМИЗАЦИЯ ==========
-async function saveCustomLogo() {
+function saveCustomLogo() {
     const newLogo = customLogoText.value.trim();
     if (newLogo) {
         customLogo = newLogo;
-        await saveCustomToSupabase();
-        const logoElem = document.getElementById("customLogo");
-        if (logoElem) logoElem.innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
+        localStorage.setItem("customLogo", customLogo);
+        document.getElementById("customLogo").innerHTML = `<i class="fas fa-dragon"></i> ${customLogo}`;
         customizeMsg.innerHTML = "Логотип сохранён";
         setTimeout(() => customizeMsg.innerHTML = "", 2000);
         addLog("Оформление", `Логотип изменён на ${customLogo}`);
     }
 }
-async function saveCustomBg() {
+function saveCustomBg() {
     const bgUrl = customBgUrl.value.trim();
     customBg = bgUrl;
-    await saveCustomToSupabase();
+    localStorage.setItem("customBg", customBg);
     document.body.style.backgroundImage = bgUrl ? `url(${bgUrl})` : "";
     customizeMsg.innerHTML = "Фон применён";
     setTimeout(() => customizeMsg.innerHTML = "", 2000);
@@ -1143,12 +1108,10 @@ function attachSortListeners() {
 
 // ========== ВКЛАДКИ ==========
 function switchTab(tabId) {
-    const tabContents = document.querySelectorAll(".tab-content");
-    tabContents.forEach(tc => tc.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(tc => tc.classList.remove("active"));
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add("active");
-    const tabBtns = document.querySelectorAll(".tab-btn");
-    tabBtns.forEach(btn => btn.classList.remove("active"));
+    document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
     const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
     if (activeBtn) activeBtn.classList.add("active");
     if (tabId === "heatsTab") renderHeatsAssignment();
@@ -1160,7 +1123,7 @@ function switchTab(tabId) {
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 async function init() {
-    await loadAllData();
+    await loadFromGoogleSheets();
     attachSortListeners();
 
     searchInput.addEventListener("input", () => { currentFilter = searchInput.value; renderTable(); });
@@ -1174,13 +1137,13 @@ async function init() {
     cancelEditBtn.addEventListener("click", cancelEdit);
     saveHeatsBtn.addEventListener("click", saveHeatsDistribution);
     randomHeatsBtn.addEventListener("click", randomizeHeats);
-    changePasswordBtn.addEventListener("click", async () => {
+    changePasswordBtn.addEventListener("click", () => {
         const newPass = newPasswordInput.value;
         const confirm = confirmPasswordInput.value;
         if (!newPass || newPass.length < 4) { passwordMessage.innerHTML = "Пароль должен быть не менее 4 символов"; return; }
         if (newPass !== confirm) { passwordMessage.innerHTML = "Пароли не совпадают"; return; }
         adminPassword = newPass;
-        await saveAdminPasswordToSupabase();
+        localStorage.setItem("adminPassword", adminPassword);
         passwordMessage.innerHTML = "✅ Пароль успешно изменён!";
         setTimeout(() => passwordMessage.innerHTML = "", 2000);
         addLog("Безопасность", "Пароль администратора изменён");
@@ -1200,14 +1163,13 @@ async function init() {
     if (importCsvBtn) importCsvBtn.addEventListener("click", () => { if (importCsvFile.files[0]) importFromCSV(importCsvFile.files[0]); else csvMessage.innerText = "Выберите файл"; });
     if (saveLogoBtn) saveLogoBtn.addEventListener("click", saveCustomLogo);
     if (saveBgBtn) saveBgBtn.addEventListener("click", saveCustomBg);
-    if (clearLogsBtn) clearLogsBtn.addEventListener("click", async () => { adminLogs = []; await sbClient.from('admin_logs').delete().neq('id', 0); renderLogs(); addLog("Очистка", "Логи удалены"); });
+    if (clearLogsBtn) clearLogsBtn.addEventListener("click", () => { adminLogs = []; localStorage.setItem("adminLogs", "[]"); renderLogs(); addLog("Очистка", "Логи удалены"); });
     if (saveLapTimeBtn) saveLapTimeBtn.addEventListener("click", saveLapTime);
     if (importFromRHBtn) importFromRHBtn.addEventListener("click", importFromRotorHazard);
     if (importManualJsonBtn) importManualJsonBtn.addEventListener("click", importManualJson);
     
-    const tabBtnsAll = document.querySelectorAll(".tab-btn");
-    tabBtnsAll.forEach(btn => {
-        btn.addEventListener("click", () => { switchTab(btn.getAttribute("data-tab")); });
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => switchTab(btn.getAttribute("data-tab")));
     });
     langRuBtn.addEventListener("click", () => setLanguage("ru"));
     langEnBtn.addEventListener("click", () => setLanguage("en"));
